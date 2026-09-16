@@ -8,17 +8,37 @@ en el disco — nos conectamos por red a un servidor de base de datos
 que ya existe (tu instancia RDS), usando estos datos de conexión.
 """
 
+import os
 import psycopg2
 
 # --- Datos de conexión a tu instancia RDS ---
-# Reemplaza estos 3 valores con los tuyos reales antes de usarlo.
+# HOST, USUARIO y NOMBRE_BD son iguales para los 3 integrantes (misma
+# RDS compartida) — no hace falta tocarlos.
 HOST = "basedatosdiseno.cw3qo244673z.us-east-1.rds.amazonaws.com"
 USUARIO = "app_rastreo"
-CONTRASENA = "tu_contraseña_aqui"
-
-# Estos 2 son iguales para los 3 integrantes, no hace falta tocarlos
 PUERTO = 5432
 NOMBRE_BD = "basedatosdiseno"
+
+# La CONTRASEÑA sí es sensible, y este archivo se despliega
+# automáticamente desde GitHub a las 3 instancias — así que NO puede
+# vivir escrita aquí (o el despliegue la pisaría con un valor de
+# ejemplo en cada push). En su lugar, se lee de un archivo local que
+# nunca se sube al repositorio (ver .gitignore).
+RUTA_CONTRASENA = os.path.join(os.path.dirname(os.path.abspath(__file__)), "contrasena_bd.txt")
+
+
+def obtener_contrasena():
+    try:
+        with open(RUTA_CONTRASENA, "r", encoding="utf-8") as f:
+            return f.read().strip()
+    except FileNotFoundError:
+        raise RuntimeError(
+            f"Falta el archivo {RUTA_CONTRASENA} con la contraseña de la base de datos. "
+            f"Créalo una vez con: echo \"tu_contraseña_real\" | sudo tee {RUTA_CONTRASENA}"
+        )
+
+
+CONTRASENA = obtener_contrasena()
 
 
 def obtener_conexion():
