@@ -1,0 +1,16 @@
+[Unit]
+Description=Listener UDP - Sistema de Rastreo GPS
+After=network.target
+
+[Service]
+Type=simple
+User=ec2-user
+WorkingDirectory=/home/ec2-user
+ExecStart=/usr/bin/python3 -u /home/ec2-user/listener.py
+Restart=always
+RestartSec=5
+StandardOutput=append:/home/ec2-user/salida_listener.log
+StandardError=append:/home/ec2-user/salida_listener.log
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,288 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Rastreo GPS en tiempo real</title>
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+  integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+  integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+
+<style>
+  :root {
+    --oscuro: #0B1F3A;
+    --medio: #1F3B5C;
+    --gris-azul: #A7B1BE;
+    --claro: #E6E9EF;
+    --carbon: #2B2F36;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--medio);
+    color: var(--claro);
+    font-family: 'Manrope', sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .envoltura {
+    max-width: 1180px;
+    margin: 0 auto;
+    padding: 28px 20px 48px;
+  }
+
+  .encabezado {
+    background: var(--gris-azul);
+    border-radius: 22px;
+    padding: 26px 28px;
+    text-align: left;
+    margin-bottom: 24px;
+    box-shadow: 0 18px 40px -24px rgba(11, 31, 58, 0.6);
+  }
+  .encabezado h1 {
+    margin: 0;
+    color: var(--oscuro);
+    font-size: 30px;
+    font-weight: 800;
+    letter-spacing: -0.01em;
+  }
+
+  .contenido-principal {
+    display: flex;
+    align-items: flex-start;
+    gap: 20px;
+  }
+
+  .contenedor-mapa {
+    position: relative;
+    border-radius: 20px;
+    overflow: hidden;
+    border: 2px solid var(--gris-azul);
+    box-shadow: 0 20px 44px -26px rgba(11, 31, 58, 0.65);
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+  #mapa { height: 560px; width: 100%; background: var(--gris-azul); }
+
+  .icono-camion {
+    font-size: 28px;
+    text-align: center;
+    line-height: 36px;
+  }
+
+  .boton-centrar {
+    position: absolute;
+    right: 16px;
+    bottom: 16px;
+    width: 46px;
+    height: 46px;
+    border-radius: 50%;
+    border: none;
+    background: var(--oscuro);
+    cursor: pointer;
+    box-shadow: 0 10px 20px -6px rgba(11, 31, 58, 0.75);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+    transition: transform 0.15s ease;
+  }
+  .boton-centrar:hover { transform: scale(1.07); }
+  .boton-centrar:active { transform: scale(0.95); }
+
+  .barra-lateral {
+    flex: 0 0 220px;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+  }
+  .dato {
+    background: var(--claro);
+    border-radius: 14px;
+    padding: 16px 20px;
+    text-align: left;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  .dato-etiqueta {
+    font-size: 12.5px;
+    color: var(--medio);
+    font-weight: 700;
+    text-transform: capitalize;
+  }
+  .dato-valor {
+    font-size: 21px;
+    font-weight: 800;
+    color: var(--oscuro);
+    letter-spacing: -0.01em;
+    transition: color 0.45s ease;
+  }
+  .dato-valor.actualizado { color: var(--carbon); }
+
+  @media (max-width: 800px) {
+    .contenido-principal { flex-direction: column; }
+    .barra-lateral {
+      flex: 1 1 auto;
+      flex-direction: row;
+      flex-wrap: wrap;
+      width: 100%;
+    }
+    .dato { flex: 1 1 40%; }
+  }
+
+  @media (max-width: 560px) {
+    .encabezado h1 { font-size: 23px; }
+    #mapa { height: 380px; }
+    .dato-valor { font-size: 17px; }
+  }
+</style>
+</head>
+<body>
+
+<div class="envoltura">
+
+  <div class="encabezado">
+    <h1>Rastreo GPS en tiempo real 🚚</h1>
+  </div>
+
+  <div class="contenido-principal">
+
+    <div class="contenedor-mapa">
+      <div id="mapa"></div>
+      <button class="boton-centrar" onclick="centrarEnVehiculo()" title="Centrar en el vehículo" aria-label="Centrar en el vehículo">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#E6E9EF" stroke-width="2.2" stroke-linecap="round">
+          <circle cx="12" cy="12" r="3.2"/>
+          <path d="M12 2.5v3.4M12 18.1v3.4M2.5 12h3.4M18.1 12h3.4"/>
+        </svg>
+      </button>
+    </div>
+
+    <div class="barra-lateral">
+      <div class="dato">
+        <span class="dato-etiqueta">Latitud</span>
+        <span class="dato-valor" id="lat">—</span>
+      </div>
+      <div class="dato">
+        <span class="dato-etiqueta">Longitud</span>
+        <span class="dato-valor" id="lon">—</span>
+      </div>
+      <div class="dato">
+        <span class="dato-etiqueta">Fecha</span>
+        <span class="dato-valor" id="fecha">—</span>
+      </div>
+      <div class="dato">
+        <span class="dato-etiqueta">Hora</span>
+        <span class="dato-valor" id="hora">—</span>
+      </div>
+    </div>
+
+  </div>
+
+</div>
+
+<script>
+  var mapa = L.map('mapa').setView([4.5, -74.3], 6);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+    maxZoom: 19
+  }).addTo(mapa);
+
+  var iconoCamion = L.divIcon({
+    html: '🚚',
+    className: 'icono-camion',
+    iconSize: [36, 36],
+    iconAnchor: [18, 18]
+  });
+
+  var marcador = null;
+  var primeraUbicacion = true;
+
+  // La línea del recorrido completo — empieza vacía y se va llenando
+  // con cada punto nuevo que llega, siguiendo el camino real.
+  var linea = L.polyline([], {
+    color: '#0B1F3A',
+    weight: 4,
+    opacity: 0.85,
+    lineJoin: 'round'
+  }).addTo(mapa);
+
+  function destellar(id) {
+    var el = document.getElementById(id);
+    el.classList.add('actualizado');
+    setTimeout(function() { el.classList.remove('actualizado'); }, 700);
+  }
+
+  function actualizarValores() {
+    fetch('/datos')
+      .then(function(respuesta) { return respuesta.json(); })
+      .then(function(datos) {
+        document.getElementById('lat').innerText = datos.lat;
+        document.getElementById('lon').innerText = datos.lon;
+        document.getElementById('fecha').innerText = datos.fecha;
+        document.getElementById('hora').innerText = datos.hora;
+        ['lat', 'lon', 'fecha', 'hora'].forEach(destellar);
+
+        // El nombre viaja como una variable de estado propia de cada
+        // instancia (NOMBRE_INTEGRANTE en servidor_web.py) — así cada
+        // uno ve su propio nombre en la pestaña del navegador.
+        if (datos.nombre) {
+          document.title = datos.nombre + ' · Rastreo GPS';
+        }
+
+        var lat = parseFloat(datos.lat);
+        var lon = parseFloat(datos.lon);
+        if (!isNaN(lat) && !isNaN(lon)) {
+          var posicion = [lat, lon];
+          if (marcador === null) {
+            marcador = L.marker(posicion, { icon: iconoCamion }).addTo(mapa);
+          } else {
+            marcador.setLatLng(posicion);
+          }
+          // Solo centramos el mapa la PRIMERA vez que hay una ubicación
+          // real. Después, el usuario controla el zoom libremente.
+          if (primeraUbicacion) {
+            mapa.setView(posicion, 15);
+            primeraUbicacion = false;
+          }
+        }
+      });
+  }
+
+  // Trae TODOS los puntos del recorrido actual y redibuja la línea
+  // completa — así se ve el camino recorrido, no solo el punto actual.
+  function actualizarRecorrido() {
+    fetch('/recorrido')
+      .then(function(respuesta) { return respuesta.json(); })
+      .then(function(puntos) {
+        var coordenadas = puntos.map(function(p) { return [p.lat, p.lon]; });
+        linea.setLatLngs(coordenadas);
+      });
+  }
+
+  function centrarEnVehiculo() {
+    if (marcador) {
+      var zoomActual = mapa.getZoom();
+      mapa.setView(marcador.getLatLng(), zoomActual < 13 ? 15 : zoomActual);
+    }
+  }
+
+  // Actualización cada 5 segundos — al mismo ritmo que ahora manda la
+  // app, para no preguntar más rápido de lo que hay dato nuevo real.
+  setInterval(function() {
+    actualizarValores();
+    actualizarRecorrido();
+  }, 5000);
+
+  actualizarValores();
+  actualizarRecorrido();
+</script>
+
+</body>
+</html>

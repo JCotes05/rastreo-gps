@@ -1,0 +1,16 @@
+[Unit]
+Description=Listener UDP - Sistema de Rastreo GPS
+After=network.target
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/home/ubuntu
+ExecStart=/usr/bin/python3 -u /home/ubuntu/listener.py
+Restart=always
+RestartSec=5
+StandardOutput=append:/home/ubuntu/salida_listener.log
+StandardError=append:/home/ubuntu/salida_listener.log
+
+[Install]
+WantedBy=multi-user.target
