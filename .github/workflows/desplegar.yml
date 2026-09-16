@@ -1,18 +1,17 @@
 # .github/workflows/desplegar.yml
 #
-# QUÉ HACE ESTE ARCHIVO, EN UNA FRASE: cada vez que alguien sube un
-# cambio a la rama "main" (normalmente fusionando un Pull Request),
-# GitHub arranca 3 "robots" en paralelo — uno por cada instancia — que
-# se conectan por SSH, copian los archivos nuevos, y reinician los
-# servicios. Nadie tiene que entrar a ninguna instancia a mano.
+# QUÉ HACE: cada push a "main" dispara 3 trabajos en paralelo (uno por
+# instancia). Cada uno prepara la llave SSH, copia los archivos
+# nuevos por SCP, y por SSH los instala y reinicia los servicios.
+#
+# A diferencia de la versión anterior, este NO usa ninguna acción de
+# terceros para conectarse — usa "ssh" y "scp" directo, los mismos
+# comandos que ya conocen de la terminal. Son parte de cualquier
+# máquina Linux (incluidos los servidores de GitHub), así que no hay
+# ninguna imagen de Docker que construir ni que pueda fallar por eso.
 
 name: Desplegar a las 3 instancias
 
-# ---------------------------------------------------------------
-# CUÁNDO se activa: solo con un push a "main". Los pushes a las
-# ramas personales (valentina, jesus, adrian) NO disparan esto —
-# esas ramas son para probar sin arriesgar las instancias reales.
-# ---------------------------------------------------------------
 on:
   push:
     branches:
@@ -29,31 +28,34 @@ jobs:
       - name: Descargar el código de este repositorio
         uses: actions/checkout@v4
 
-      - name: Copiar los archivos a la instancia por SCP
-        uses: appleboy/scp-action@v0.1.7
-        with:
-          host: ${{ secrets.VALENTINA_IP }}
-          username: ubuntu
-          key: ${{ secrets.VALENTINA_SSH_KEY }}
-          source: "servidor/basedatos.py,servidor/listener.py,servidor/servidor_web.py,web/index.html,nginx/valentina.conf"
-          target: "/home/ubuntu/despliegue"
+      - name: Preparar la llave SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.VALENTINA_SSH_KEY }}" > ~/.ssh/clave.pem
+          chmod 600 ~/.ssh/clave.pem
+          ssh-keyscan -H ${{ secrets.VALENTINA_IP }} >> ~/.ssh/known_hosts 2>/dev/null
+
+      - name: Copiar los archivos a la instancia
+        run: |
+          ssh -i ~/.ssh/clave.pem ubuntu@${{ secrets.VALENTINA_IP }} "mkdir -p ~/despliegue"
+          scp -i ~/.ssh/clave.pem \
+            servidor/basedatos.py servidor/listener.py servidor/servidor_web.py \
+            web/index.html nginx/valentina.conf \
+            ubuntu@${{ secrets.VALENTINA_IP }}:~/despliegue/
 
       - name: Instalar los archivos y reiniciar los servicios
-        uses: appleboy/ssh-action@v1.0.0
-        with:
-          host: ${{ secrets.VALENTINA_IP }}
-          username: ubuntu
-          key: ${{ secrets.VALENTINA_SSH_KEY }}
-          script: |
-            sudo cp /home/ubuntu/despliegue/servidor/basedatos.py /home/ubuntu/basedatos.py
-            sudo cp /home/ubuntu/despliegue/servidor/listener.py /home/ubuntu/listener.py
-            sudo cp /home/ubuntu/despliegue/servidor/servidor_web.py /home/ubuntu/servidor_web.py
-            sudo cp /home/ubuntu/despliegue/web/index.html /var/www/rastreo/index.html
-            sudo cp /home/ubuntu/despliegue/nginx/valentina.conf /etc/nginx/sites-available/default
+        run: |
+          ssh -i ~/.ssh/clave.pem ubuntu@${{ secrets.VALENTINA_IP }} '
+            sudo cp ~/despliegue/basedatos.py ~/basedatos.py
+            sudo cp ~/despliegue/listener.py ~/listener.py
+            sudo cp ~/despliegue/servidor_web.py ~/servidor_web.py
+            sudo cp ~/despliegue/index.html /var/www/rastreo/index.html
+            sudo cp ~/despliegue/valentina.conf /etc/nginx/sites-available/default
             sudo nginx -t
             sudo systemctl restart nginx
             sudo systemctl restart listener.service
             sudo systemctl restart servidor-web.service
+          '
 
   # =================================================================
   # TU INSTANCIA (Ubuntu)
@@ -64,34 +66,37 @@ jobs:
       - name: Descargar el código de este repositorio
         uses: actions/checkout@v4
 
-      - name: Copiar los archivos a la instancia por SCP
-        uses: appleboy/scp-action@v0.1.7
-        with:
-          host: ${{ secrets.JESUS_IP }}
-          username: ubuntu
-          key: ${{ secrets.JESUS_SSH_KEY }}
-          source: "servidor/basedatos.py,servidor/listener.py,servidor/servidor_web.py,web/index.html,nginx/jesus.conf"
-          target: "/home/ubuntu/despliegue"
+      - name: Preparar la llave SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.JESUS_SSH_KEY }}" > ~/.ssh/clave.pem
+          chmod 600 ~/.ssh/clave.pem
+          ssh-keyscan -H ${{ secrets.JESUS_IP }} >> ~/.ssh/known_hosts 2>/dev/null
+
+      - name: Copiar los archivos a la instancia
+        run: |
+          ssh -i ~/.ssh/clave.pem ubuntu@${{ secrets.JESUS_IP }} "mkdir -p ~/despliegue"
+          scp -i ~/.ssh/clave.pem \
+            servidor/basedatos.py servidor/listener.py servidor/servidor_web.py \
+            web/index.html nginx/jesus.conf \
+            ubuntu@${{ secrets.JESUS_IP }}:~/despliegue/
 
       - name: Instalar los archivos y reiniciar los servicios
-        uses: appleboy/ssh-action@v1.0.0
-        with:
-          host: ${{ secrets.JESUS_IP }}
-          username: ubuntu
-          key: ${{ secrets.JESUS_SSH_KEY }}
-          script: |
-            sudo cp /home/ubuntu/despliegue/servidor/basedatos.py /home/ubuntu/basedatos.py
-            sudo cp /home/ubuntu/despliegue/servidor/listener.py /home/ubuntu/listener.py
-            sudo cp /home/ubuntu/despliegue/servidor/servidor_web.py /home/ubuntu/servidor_web.py
-            sudo cp /home/ubuntu/despliegue/web/index.html /var/www/rastreo/index.html
-            sudo cp /home/ubuntu/despliegue/nginx/jesus.conf /etc/nginx/sites-available/default
+        run: |
+          ssh -i ~/.ssh/clave.pem ubuntu@${{ secrets.JESUS_IP }} '
+            sudo cp ~/despliegue/basedatos.py ~/basedatos.py
+            sudo cp ~/despliegue/listener.py ~/listener.py
+            sudo cp ~/despliegue/servidor_web.py ~/servidor_web.py
+            sudo cp ~/despliegue/index.html /var/www/rastreo/index.html
+            sudo cp ~/despliegue/jesus.conf /etc/nginx/sites-available/default
             sudo nginx -t
             sudo systemctl restart nginx
             sudo systemctl restart listener.service
             sudo systemctl restart servidor-web.service
+          '
 
   # =================================================================
-  # INSTANCIA DE ADRIÁN (Amazon Linux — usuario y rutas distintas)
+  # INSTANCIA DE ADRIÁN (Amazon Linux)
   # =================================================================
   desplegar-adrian:
     runs-on: ubuntu-latest
@@ -99,28 +104,31 @@ jobs:
       - name: Descargar el código de este repositorio
         uses: actions/checkout@v4
 
-      - name: Copiar los archivos a la instancia por SCP
-        uses: appleboy/scp-action@v0.1.7
-        with:
-          host: ${{ secrets.ADRIAN_IP }}
-          username: ec2-user
-          key: ${{ secrets.ADRIAN_SSH_KEY }}
-          source: "servidor/basedatos.py,servidor/listener.py,servidor/servidor_web.py,web/index.html,nginx/adrian.conf"
-          target: "/home/ec2-user/despliegue"
+      - name: Preparar la llave SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.ADRIAN_SSH_KEY }}" > ~/.ssh/clave.pem
+          chmod 600 ~/.ssh/clave.pem
+          ssh-keyscan -H ${{ secrets.ADRIAN_IP }} >> ~/.ssh/known_hosts 2>/dev/null
+
+      - name: Copiar los archivos a la instancia
+        run: |
+          ssh -i ~/.ssh/clave.pem ec2-user@${{ secrets.ADRIAN_IP }} "mkdir -p ~/despliegue"
+          scp -i ~/.ssh/clave.pem \
+            servidor/basedatos.py servidor/listener.py servidor/servidor_web.py \
+            web/index.html nginx/adrian.conf \
+            ec2-user@${{ secrets.ADRIAN_IP }}:~/despliegue/
 
       - name: Instalar los archivos y reiniciar los servicios
-        uses: appleboy/ssh-action@v1.0.0
-        with:
-          host: ${{ secrets.ADRIAN_IP }}
-          username: ec2-user
-          key: ${{ secrets.ADRIAN_SSH_KEY }}
-          script: |
-            sudo cp /home/ec2-user/despliegue/servidor/basedatos.py /home/ec2-user/basedatos.py
-            sudo cp /home/ec2-user/despliegue/servidor/listener.py /home/ec2-user/listener.py
-            sudo cp /home/ec2-user/despliegue/servidor/servidor_web.py /home/ec2-user/servidor_web.py
-            sudo cp /home/ec2-user/despliegue/web/index.html /var/www/rastreo/index.html
-            sudo cp /home/ec2-user/despliegue/nginx/adrian.conf /etc/nginx/nginx.conf
+        run: |
+          ssh -i ~/.ssh/clave.pem ec2-user@${{ secrets.ADRIAN_IP }} '
+            sudo cp ~/despliegue/basedatos.py ~/basedatos.py
+            sudo cp ~/despliegue/listener.py ~/listener.py
+            sudo cp ~/despliegue/servidor_web.py ~/servidor_web.py
+            sudo cp ~/despliegue/index.html /var/www/rastreo/index.html
+            sudo cp ~/despliegue/adrian.conf /etc/nginx/nginx.conf
             sudo nginx -t
             sudo systemctl restart nginx
             sudo systemctl restart listener.service
             sudo systemctl restart servidor-web.service
+          '
