@@ -126,6 +126,67 @@
   }
   .dato-valor.actualizado { color: var(--carbon); }
 
+  /* ===================== PESTAÑAS ===================== */
+  .pestañas { display: flex; gap: 8px; margin-bottom: 20px; }
+  .pestaña {
+    padding: 10px 22px;
+    border-radius: 12px;
+    border: none;
+    background: var(--claro);
+    color: var(--medio);
+    font-family: 'Manrope', sans-serif;
+    font-weight: 700;
+    font-size: 14px;
+    cursor: pointer;
+    transition: background 0.15s ease, color 0.15s ease;
+  }
+  .pestaña.activa { background: var(--oscuro); color: #FFFFFF; }
+  .vista { display: none; }
+  .vista.activa { display: block; }
+
+  /* ===================== HISTÓRICOS: layout ===================== */
+  .historicos-layout { display: flex; gap: 20px; align-items: flex-start; }
+  .historicos-lista-panel { flex: 0 0 300px; display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+  .historicos-detalle-panel { flex: 1 1 auto; min-width: 0; }
+  #mapa-historico { height: 460px; width: 100%; background: var(--gris-azul); }
+
+  /* ===================== HISTÓRICOS: filtro ===================== */
+  .filtro-panel { background: var(--claro); border-radius: 16px; padding: 16px; display: flex; flex-direction: column; gap: 8px; }
+  .filtro-panel label { font-size: 11px; font-weight: 700; color: var(--medio); text-transform: uppercase; letter-spacing: 0.02em; }
+  .filtro-panel input {
+    border: 1px solid var(--gris-azul); border-radius: 8px; padding: 7px 10px;
+    font-family: 'Manrope', sans-serif; font-size: 13px; color: var(--oscuro); width: 100%;
+  }
+  .filtro-botones { display: flex; gap: 8px; margin-top: 6px; }
+  .filtro-botones button {
+    flex: 1; border-radius: 8px; padding: 9px; font-family: 'Manrope', sans-serif;
+    font-weight: 700; font-size: 12.5px; cursor: pointer;
+  }
+  .btn-filtrar { background: var(--oscuro); color: #FFFFFF; border: none; }
+  .btn-limpiar { background: #FFFFFF; color: var(--medio); border: 1px solid var(--gris-azul); }
+
+  /* ===================== HISTÓRICOS: lista de recorridos ===================== */
+  .lista-recorridos { display: flex; flex-direction: column; gap: 10px; max-height: 460px; overflow-y: auto; }
+  .tarjeta-recorrido {
+    background: var(--claro); border-radius: 14px; padding: 14px 16px; cursor: pointer;
+    border: 2px solid transparent; transition: border-color 0.15s ease, transform 0.1s ease;
+  }
+  .tarjeta-recorrido:hover { transform: translateY(-2px); }
+  .tarjeta-recorrido.seleccionada { border-color: var(--oscuro); }
+  .tarjeta-recorrido-titulo { font-weight: 800; color: var(--oscuro); font-size: 14px; margin-bottom: 4px; }
+  .tarjeta-recorrido-sub { font-size: 11.5px; color: var(--medio); }
+  .lista-vacia { text-align: center; color: var(--claro); font-size: 13px; padding: 30px 10px; opacity: 0.75; }
+
+  /* ===================== HISTÓRICOS: detalle, slider, punto ===================== */
+  .detalle-recorrido { margin-top: 18px; }
+  .detalle-franja { display: flex; gap: 14px; margin-bottom: 16px; flex-wrap: wrap; }
+  .panel-slider { background: var(--claro); border-radius: 14px; padding: 16px 18px; margin-top: 4px; }
+  .panel-slider label { font-size: 11px; font-weight: 700; color: var(--medio); text-transform: uppercase; display: block; margin-bottom: 10px; }
+  .panel-slider input[type=range] { width: 100%; }
+  .slider-etiqueta { margin-top: 8px; font-weight: 800; color: var(--oscuro); font-size: 15px; }
+  .punto-info { background: var(--oscuro); border-radius: 14px; padding: 14px 18px; margin-top: 12px; color: #FFFFFF; font-size: 13px; line-height: 1.6; }
+  .punto-info b { color: var(--gris-azul); }
+
   @media (max-width: 800px) {
     .contenido-principal { flex-direction: column; }
     .barra-lateral {
@@ -135,11 +196,14 @@
       width: 100%;
     }
     .dato { flex: 1 1 40%; }
+    .historicos-layout { flex-direction: column; }
+    .historicos-lista-panel { flex: 1 1 auto; width: 100%; }
   }
 
   @media (max-width: 560px) {
     .encabezado h1 { font-size: 23px; }
     #mapa { height: 380px; }
+    #mapa-historico { height: 320px; }
     .dato-valor { font-size: 17px; }
   }
 </style>
@@ -152,37 +216,104 @@
     <h1>Rastreo GPS en tiempo real 🚚</h1>
   </div>
 
-  <div class="contenido-principal">
+  <div class="pestañas">
+    <button class="pestaña activa" id="tab-tiempo-real" onclick="cambiarVista('tiempo-real')">📍 Tiempo Real</button>
+    <button class="pestaña" id="tab-historicos" onclick="cambiarVista('historicos')">🕐 Históricos</button>
+  </div>
 
-    <div class="contenedor-mapa">
-      <div id="mapa"></div>
-      <button class="boton-centrar" onclick="centrarEnVehiculo()" title="Centrar en el vehículo" aria-label="Centrar en el vehículo">
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#E6E9EF" stroke-width="2.2" stroke-linecap="round">
-          <circle cx="12" cy="12" r="3.2"/>
-          <path d="M12 2.5v3.4M12 18.1v3.4M2.5 12h3.4M18.1 12h3.4"/>
-        </svg>
-      </button>
+  <div id="vista-tiempo-real" class="vista activa">
+    <div class="contenido-principal">
+
+      <div class="contenedor-mapa">
+        <div id="mapa"></div>
+        <button class="boton-centrar" onclick="centrarEnVehiculo()" title="Centrar en el vehículo" aria-label="Centrar en el vehículo">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#E6E9EF" stroke-width="2.2" stroke-linecap="round">
+            <circle cx="12" cy="12" r="3.2"/>
+            <path d="M12 2.5v3.4M12 18.1v3.4M2.5 12h3.4M18.1 12h3.4"/>
+          </svg>
+        </button>
+      </div>
+
+      <div class="barra-lateral">
+        <div class="dato">
+          <span class="dato-etiqueta">Latitud</span>
+          <span class="dato-valor" id="lat">—</span>
+        </div>
+        <div class="dato">
+          <span class="dato-etiqueta">Longitud</span>
+          <span class="dato-valor" id="lon">—</span>
+        </div>
+        <div class="dato">
+          <span class="dato-etiqueta">Fecha</span>
+          <span class="dato-valor" id="fecha">—</span>
+        </div>
+        <div class="dato">
+          <span class="dato-etiqueta">Hora</span>
+          <span class="dato-valor" id="hora">—</span>
+        </div>
+      </div>
+
     </div>
+  </div>
 
-    <div class="barra-lateral">
-      <div class="dato">
-        <span class="dato-etiqueta">Latitud</span>
-        <span class="dato-valor" id="lat">—</span>
+  <div id="vista-historicos" class="vista">
+    <div class="historicos-layout">
+
+      <div class="historicos-lista-panel">
+        <div class="filtro-panel">
+          <label>Fecha</label>
+          <input type="date" id="filtro-fecha">
+          <label>Desde</label>
+          <input type="time" id="filtro-desde">
+          <label>Hasta</label>
+          <input type="time" id="filtro-hasta">
+          <div class="filtro-botones">
+            <button class="btn-filtrar" onclick="aplicarFiltro()">Filtrar</button>
+            <button class="btn-limpiar" onclick="limpiarFiltro()">Limpiar</button>
+          </div>
+        </div>
+
+        <div class="lista-recorridos" id="lista-recorridos">
+          <div class="lista-vacia">Cargando recorridos…</div>
+        </div>
       </div>
-      <div class="dato">
-        <span class="dato-etiqueta">Longitud</span>
-        <span class="dato-valor" id="lon">—</span>
+
+      <div class="historicos-detalle-panel">
+        <div class="contenedor-mapa">
+          <div id="mapa-historico"></div>
+        </div>
+
+        <div class="detalle-recorrido" id="detalle-recorrido" style="display:none">
+          <div class="detalle-franja">
+            <div class="dato">
+              <span class="dato-etiqueta">Inicio</span>
+              <span class="dato-valor" id="hist-hora-inicio">—</span>
+            </div>
+            <div class="dato">
+              <span class="dato-etiqueta">Fin</span>
+              <span class="dato-valor" id="hist-hora-fin">—</span>
+            </div>
+            <div class="dato">
+              <span class="dato-etiqueta">Puntos</span>
+              <span class="dato-valor" id="hist-num-puntos">—</span>
+            </div>
+          </div>
+
+          <div class="panel-slider">
+            <label>Momento del recorrido — arrastra para ver dónde estuvo</label>
+            <input type="range" id="slider-momento" min="0" max="0" value="0" oninput="moverSlider(this.value)">
+            <div class="slider-etiqueta" id="slider-etiqueta">—</div>
+          </div>
+
+          <div class="punto-info" id="punto-info" style="display:none">
+            <div><b>PUNTO SELECCIONADO</b></div>
+            <div>Lat: <span id="punto-lat">—</span> &nbsp;·&nbsp; Lon: <span id="punto-lon">—</span></div>
+            <div>Fecha: <span id="punto-fecha">—</span> &nbsp;·&nbsp; Hora: <span id="punto-hora">—</span></div>
+          </div>
+        </div>
       </div>
-      <div class="dato">
-        <span class="dato-etiqueta">Fecha</span>
-        <span class="dato-valor" id="fecha">—</span>
-      </div>
-      <div class="dato">
-        <span class="dato-etiqueta">Hora</span>
-        <span class="dato-valor" id="hora">—</span>
-      </div>
+
     </div>
-
   </div>
 
 </div>
@@ -284,6 +415,185 @@
 
   actualizarValores();
   actualizarRecorrido();
+
+  // =====================================================================
+  // HISTÓRICOS
+  // =====================================================================
+
+  var mapaHistorico = null;
+  var lineaHistorico = null;
+  var marcadoresPuntos = [];
+  var marcadorSlider = null;
+  var recorridoActual = null;   // puntos del recorrido seleccionado ahora
+  var todosLosRecorridos = [];  // caché de /recorridos, para filtrar sin re-pedir
+
+  function cambiarVista(vista) {
+    document.getElementById('tab-tiempo-real').classList.toggle('activa', vista === 'tiempo-real');
+    document.getElementById('tab-historicos').classList.toggle('activa', vista === 'historicos');
+    document.getElementById('vista-tiempo-real').classList.toggle('activa', vista === 'tiempo-real');
+    document.getElementById('vista-historicos').classList.toggle('activa', vista === 'historicos');
+
+    if (vista === 'historicos') {
+      if (mapaHistorico === null) {
+        // Leaflet necesita que su contenedor ya sea visible y tenga
+        // tamaño real ANTES de crear el mapa — por eso se inicializa
+        // aquí, la primera vez que se entra a esta pestaña, y no
+        // arriba junto con el mapa de Tiempo Real.
+        inicializarMapaHistorico();
+        cargarListaRecorridos();
+      } else {
+        // El mapa ya existía pero estuvo oculto — hay que avisarle
+        // que su contenedor cambió de tamaño, o se ve cortado.
+        setTimeout(function() { mapaHistorico.invalidateSize(); }, 50);
+      }
+    }
+  }
+
+  function inicializarMapaHistorico() {
+    mapaHistorico = L.map('mapa-historico').setView([4.5, -74.3], 6);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+      maxZoom: 19
+    }).addTo(mapaHistorico);
+
+    lineaHistorico = L.polyline([], { color: '#5B21B6', weight: 4, opacity: 0.85, lineJoin: 'round' }).addTo(mapaHistorico);
+  }
+
+  function cargarListaRecorridos() {
+    fetch('/recorridos')
+      .then(function(r) { return r.json(); })
+      .then(function(recorridos) {
+        todosLosRecorridos = recorridos;
+        renderizarListaRecorridos(recorridos);
+      });
+  }
+
+  // "2026-09-21T08:00:00.595702" -> "21/09 08:00"
+  function formatoHora(iso) {
+    if (!iso) return '—';
+    var partes = iso.split('T');
+    var fecha = partes[0].split('-');
+    var hora = partes[1].substring(0, 5);
+    return fecha[2] + '/' + fecha[1] + ' ' + hora;
+  }
+
+  function renderizarListaRecorridos(recorridos) {
+    var contenedor = document.getElementById('lista-recorridos');
+    if (recorridos.length === 0) {
+      contenedor.innerHTML = '<div class="lista-vacia">Ningún recorrido coincide con este filtro.</div>';
+      return;
+    }
+    contenedor.innerHTML = '';
+    recorridos.forEach(function(r) {
+      var tarjeta = document.createElement('div');
+      tarjeta.className = 'tarjeta-recorrido';
+      tarjeta.dataset.id = r.id_recorrido;
+      tarjeta.innerHTML =
+        '<div class="tarjeta-recorrido-titulo">' + formatoHora(r.hora_recepcion_inicio) + '</div>' +
+        '<div class="tarjeta-recorrido-sub">' + r.num_puntos + ' puntos · hasta ' + formatoHora(r.hora_recepcion_fin) + '</div>';
+      tarjeta.addEventListener('click', function () { seleccionarRecorrido(r.id_recorrido); });
+      contenedor.appendChild(tarjeta);
+    });
+  }
+
+  // El filtro no vuelve a preguntarle al servidor — filtra la lista
+  // que ya se cargó en memoria, comparando fecha y hora como texto.
+  function aplicarFiltro() {
+    var fecha = document.getElementById('filtro-fecha').value;
+    var desde = document.getElementById('filtro-desde').value;
+    var hasta = document.getElementById('filtro-hasta').value;
+
+    var filtrados = todosLosRecorridos.filter(function(r) {
+      var partes = r.hora_recepcion_inicio.split('T');
+      var inicioFecha = partes[0];
+      var inicioHora = partes[1].substring(0, 5);
+
+      if (fecha && inicioFecha !== fecha) return false;
+      if (desde && inicioHora < desde) return false;
+      if (hasta && inicioHora > hasta) return false;
+      return true;
+    });
+    renderizarListaRecorridos(filtrados);
+  }
+
+  function limpiarFiltro() {
+    document.getElementById('filtro-fecha').value = '';
+    document.getElementById('filtro-desde').value = '';
+    document.getElementById('filtro-hasta').value = '';
+    renderizarListaRecorridos(todosLosRecorridos);
+  }
+
+  function seleccionarRecorrido(id) {
+    document.querySelectorAll('.tarjeta-recorrido').forEach(function(t) {
+      t.classList.toggle('seleccionada', t.dataset.id === String(id));
+    });
+
+    fetch('/puntos_recorrido?id=' + encodeURIComponent(id))
+      .then(function(r) { return r.json(); })
+      .then(function(puntos) {
+        recorridoActual = puntos;
+        dibujarRecorridoHistorico(puntos);
+      });
+  }
+
+  function dibujarRecorridoHistorico(puntos) {
+    marcadoresPuntos.forEach(function(m) { mapaHistorico.removeLayer(m); });
+    marcadoresPuntos = [];
+    if (marcadorSlider) { mapaHistorico.removeLayer(marcadorSlider); marcadorSlider = null; }
+
+    if (puntos.length === 0) return;
+
+    var coordenadas = puntos.map(function(p) { return [p.lat, p.lon]; });
+    lineaHistorico.setLatLngs(coordenadas);
+    mapaHistorico.fitBounds(lineaHistorico.getBounds(), { padding: [30, 30] });
+
+    // Un círculo clicable por cada punto — verde el primero (inicio),
+    // coral el último (fin), violeta los del medio. Clic en
+    // cualquiera muestra sus datos exactos.
+    puntos.forEach(function(p, indice) {
+      var color = indice === 0 ? '#0F766E' : (indice === puntos.length - 1 ? '#C2410C' : '#5B21B6');
+      var circulo = L.circleMarker([p.lat, p.lon], {
+        radius: 5, color: '#FFFFFF', weight: 1.5, fillColor: color, fillOpacity: 1
+      }).addTo(mapaHistorico);
+      circulo.on('click', function () { mostrarInfoPunto(p); });
+      marcadoresPuntos.push(circulo);
+    });
+
+    // El marcador grande y oscuro es el que mueve el control deslizante.
+    marcadorSlider = L.circleMarker(coordenadas[0], {
+      radius: 8, color: '#FFFFFF', weight: 2, fillColor: '#0B1F3A', fillOpacity: 1
+    }).addTo(mapaHistorico);
+
+    document.getElementById('detalle-recorrido').style.display = 'block';
+    document.getElementById('hist-hora-inicio').innerText = formatoHora(puntos[0].hora_recepcion);
+    document.getElementById('hist-hora-fin').innerText = formatoHora(puntos[puntos.length - 1].hora_recepcion);
+    document.getElementById('hist-num-puntos').innerText = puntos.length;
+
+    var slider = document.getElementById('slider-momento');
+    slider.min = 0;
+    slider.max = puntos.length - 1;
+    slider.value = 0;
+    moverSlider(0);
+  }
+
+  function moverSlider(indice) {
+    indice = parseInt(indice, 10);
+    if (!recorridoActual || !recorridoActual[indice]) return;
+    var punto = recorridoActual[indice];
+    if (marcadorSlider) {
+      marcadorSlider.setLatLng([punto.lat, punto.lon]);
+    }
+    document.getElementById('slider-etiqueta').innerText = formatoHora(punto.hora_recepcion);
+    mostrarInfoPunto(punto);
+  }
+
+  function mostrarInfoPunto(punto) {
+    document.getElementById('punto-info').style.display = 'block';
+    document.getElementById('punto-lat').innerText = punto.lat;
+    document.getElementById('punto-lon').innerText = punto.lon;
+    document.getElementById('punto-fecha').innerText = punto.fecha;
+    document.getElementById('punto-hora').innerText = punto.hora;
+  }
 </script>
 
 </body>
