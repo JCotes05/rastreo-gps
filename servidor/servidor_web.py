@@ -11,6 +11,7 @@ import json
 import os
 import psycopg2
 from http.server import BaseHTTPRequestHandler, HTTPServer
+from urllib.parse import urlparse, parse_qs
 from basedatos import obtener_conexion, crear_tabla
 
 PUERTO = 8080
@@ -92,12 +93,102 @@ def obtener_puntos_del_recorrido_actual():
     return [{"lat": lat, "lon": lon} for lat, lon in filas]
 
 
+def obtener_lista_recorridos():
+    """
+    Devuelve un resumen de cada recorrido guardado: su ID, cuántos
+    puntos tiene, y la ubicación/hora de su primer y último punto.
+    Es lo que llena la lista de tarjetas en la sección Históricos.
+    """
+    conexion = obtener_conexion()
+    cursor = conexion.cursor()
+    resultado = []
+    try:
+        cursor.execute("""
+            SELECT id_recorrido, MIN(id) AS primer_id, MAX(id) AS ultimo_id, COUNT(*) AS num_puntos
+            FROM ubicaciones
+            WHERE id_recorrido IS NOT NULL
+            GROUP BY id_recorrido
+            ORDER BY MIN(id) DESC
+            LIMIT 30
+        """)
+        grupos = cursor.fetchall()
+
+        for id_recorrido, primer_id, ultimo_id, num_puntos in grupos:
+            cursor.execute(
+                "SELECT latitud, longitud, hora_gps, hora_recepcion FROM ubicaciones WHERE id = %s",
+                (primer_id,),
+            )
+            inicio = cursor.fetchone()
+            cursor.execute(
+                "SELECT latitud, longitud, hora_gps, hora_recepcion FROM ubicaciones WHERE id = %s",
+                (ultimo_id,),
+            )
+            fin = cursor.fetchone()
+
+            resultado.append({
+                "id_recorrido": id_recorrido,
+                "num_puntos": num_puntos,
+                "lat_inicio": inicio[0], "lon_inicio": inicio[1],
+                "hora_inicio": inicio[2] or "—", "hora_recepcion_inicio": inicio[3],
+                "lat_fin": fin[0], "lon_fin": fin[1],
+                "hora_fin": fin[2] or "—", "hora_recepcion_fin": fin[3],
+            })
+    except psycopg2.errors.UndefinedColumn:
+        conexion.rollback()
+    finally:
+        cursor.close()
+        conexion.close()
+    return resultado
+
+
+def obtener_puntos_de_recorrido(id_recorrido):
+    """
+    Igual que obtener_puntos_del_recorrido_actual(), pero para UN
+    recorrido específico (por su id_recorrido), no necesariamente el
+    más reciente — usado por la sección Históricos al seleccionar uno
+    de la lista.
+    """
+    conexion = obtener_conexion()
+    cursor = conexion.cursor()
+    filas = []
+    try:
+        cursor.execute("""
+            SELECT latitud, longitud, hora_gps, hora_recepcion
+            FROM ubicaciones
+            WHERE id_recorrido = %s
+            ORDER BY id ASC
+        """, (id_recorrido,))
+        filas = cursor.fetchall()
+    except psycopg2.errors.UndefinedColumn:
+        conexion.rollback()
+    finally:
+        cursor.close()
+        conexion.close()
+    return [
+        {
+            "lat": lat, "lon": lon,
+            "hora": hora_gps or "—",
+            "fecha": hora_recepcion.split("T")[0],
+            "hora_recepcion": hora_recepcion,
+        }
+        for lat, lon, hora_gps, hora_recepcion in filas
+    ]
+
+
 class ManejadorDeSolicitudes(BaseHTTPRequestHandler):
     def do_GET(self):
         # Nginx sirve "/" directamente desde el disco (index.html) y
-        # solo reenvía aquí las peticiones a /datos y /recorrido.
-        if self.path == "/recorrido":
+        # solo reenvía aquí las peticiones a estas rutas de datos.
+        ruta = urlparse(self.path)
+        parametros = parse_qs(ruta.query)
+
+        if ruta.path == "/recorrido":
             datos = obtener_puntos_del_recorrido_actual()
+        elif ruta.path == "/recorridos":
+            datos = obtener_lista_recorridos()
+        elif ruta.path == "/puntos_recorrido":
+            id_recorrido = parametros.get("id", [None])[0]
+            datos = obtener_puntos_de_recorrido(id_recorrido) if id_recorrido else []
         else:
             datos = obtener_datos_actuales()
 
