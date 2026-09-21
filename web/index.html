@@ -145,10 +145,43 @@
   .vista.activa { display: block; }
 
   /* ===================== HISTÓRICOS: layout ===================== */
-  .historicos-layout { display: flex; gap: 20px; align-items: flex-start; }
-  .historicos-lista-panel { flex: 0 0 300px; display: flex; flex-direction: column; gap: 14px; min-width: 0; }
-  .historicos-detalle-panel { flex: 1 1 auto; min-width: 0; }
-  #mapa-historico { height: 460px; width: 100%; background: var(--gris-azul); }
+  .historicos-layout { display: flex; gap: 16px; align-items: flex-start; }
+
+  .boton-lista-toggle {
+    flex: 0 0 auto;
+    display: none;
+    align-items: center;
+    gap: 6px;
+    background: var(--oscuro);
+    color: #FFFFFF;
+    border: none;
+    border-radius: 12px;
+    padding: 14px 10px;
+    cursor: pointer;
+    font-family: 'Manrope', sans-serif;
+    font-weight: 700;
+    font-size: 12.5px;
+    writing-mode: vertical-rl;
+    text-orientation: mixed;
+    transition: background 0.15s ease;
+  }
+  .boton-lista-toggle.visible { display: flex; }
+  .boton-lista-toggle:hover { background: var(--medio); }
+
+  .panel-lista-columna { flex: 0 0 300px; display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+  .panel-lista-columna.oculto { display: none; }
+
+  .historicos-mapa-columna { flex: 1 1 auto; min-width: 0; }
+  #mapa-historico { height: 560px; width: 100%; background: var(--gris-azul); }
+
+  .historicos-detalle-lateral {
+    flex: 0 0 260px;
+    display: none;
+    flex-direction: column;
+    gap: 14px;
+    min-width: 0;
+  }
+  .historicos-detalle-lateral.visible { display: flex; }
 
   /* ===================== HISTÓRICOS: filtro ===================== */
   .filtro-panel { background: var(--claro); border-radius: 16px; padding: 16px; display: flex; flex-direction: column; gap: 8px; }
@@ -177,17 +210,16 @@
   .tarjeta-recorrido-sub { font-size: 11.5px; color: var(--medio); }
   .lista-vacia { text-align: center; color: var(--claro); font-size: 13px; padding: 30px 10px; opacity: 0.75; }
 
-  /* ===================== HISTÓRICOS: detalle, slider, punto ===================== */
-  .detalle-recorrido { margin-top: 18px; }
-  .detalle-franja { display: flex; gap: 14px; margin-bottom: 16px; flex-wrap: wrap; }
-  .panel-slider { background: var(--claro); border-radius: 14px; padding: 16px 18px; margin-top: 4px; }
+  /* ===================== HISTÓRICOS: detalle, slider, punto (ahora en la barra lateral) ===================== */
+  .detalle-franja { display: flex; flex-direction: column; gap: 12px; }
+  .panel-slider { background: var(--claro); border-radius: 14px; padding: 16px 18px; }
   .panel-slider label { font-size: 11px; font-weight: 700; color: var(--medio); text-transform: uppercase; display: block; margin-bottom: 10px; }
   .panel-slider input[type=range] { width: 100%; }
   .slider-etiqueta { margin-top: 8px; font-weight: 800; color: var(--oscuro); font-size: 15px; }
-  .punto-info { background: var(--oscuro); border-radius: 14px; padding: 14px 18px; margin-top: 12px; color: #FFFFFF; font-size: 13px; line-height: 1.6; }
+  .punto-info { background: var(--oscuro); border-radius: 14px; padding: 14px 18px; color: #FFFFFF; font-size: 13px; line-height: 1.6; }
   .punto-info b { color: var(--gris-azul); }
 
-  @media (max-width: 800px) {
+  @media (max-width: 900px) {
     .contenido-principal { flex-direction: column; }
     .barra-lateral {
       flex: 1 1 auto;
@@ -197,7 +229,9 @@
     }
     .dato { flex: 1 1 40%; }
     .historicos-layout { flex-direction: column; }
-    .historicos-lista-panel { flex: 1 1 auto; width: 100%; }
+    .panel-lista-columna { flex: 1 1 auto; width: 100%; }
+    .historicos-detalle-lateral { flex: 1 1 auto; width: 100%; }
+    .boton-lista-toggle { writing-mode: horizontal-tb; width: 100%; justify-content: center; padding: 10px; }
   }
 
   @media (max-width: 560px) {
@@ -259,7 +293,11 @@
   <div id="vista-historicos" class="vista">
     <div class="historicos-layout">
 
-      <div class="historicos-lista-panel">
+      <button class="boton-lista-toggle" id="boton-lista-toggle" onclick="mostrarPanelLista()" title="Ver recorridos" aria-label="Ver recorridos">
+        ☰ Recorridos
+      </button>
+
+      <div class="panel-lista-columna" id="panel-lista-columna">
         <div class="filtro-panel">
           <label>Fecha</label>
           <input type="date" id="filtro-fecha">
@@ -278,38 +316,38 @@
         </div>
       </div>
 
-      <div class="historicos-detalle-panel">
+      <div class="historicos-mapa-columna">
         <div class="contenedor-mapa">
           <div id="mapa-historico"></div>
         </div>
+      </div>
 
-        <div class="detalle-recorrido" id="detalle-recorrido" style="display:none">
-          <div class="detalle-franja">
-            <div class="dato">
-              <span class="dato-etiqueta">Inicio</span>
-              <span class="dato-valor" id="hist-hora-inicio">—</span>
-            </div>
-            <div class="dato">
-              <span class="dato-etiqueta">Fin</span>
-              <span class="dato-valor" id="hist-hora-fin">—</span>
-            </div>
-            <div class="dato">
-              <span class="dato-etiqueta">Puntos</span>
-              <span class="dato-valor" id="hist-num-puntos">—</span>
-            </div>
+      <div class="historicos-detalle-lateral" id="detalle-recorrido">
+        <div class="detalle-franja">
+          <div class="dato">
+            <span class="dato-etiqueta">Inicio</span>
+            <span class="dato-valor" id="hist-hora-inicio">—</span>
           </div>
+          <div class="dato">
+            <span class="dato-etiqueta">Fin</span>
+            <span class="dato-valor" id="hist-hora-fin">—</span>
+          </div>
+          <div class="dato">
+            <span class="dato-etiqueta">Puntos</span>
+            <span class="dato-valor" id="hist-num-puntos">—</span>
+          </div>
+        </div>
 
-          <div class="panel-slider">
-            <label>Momento del recorrido — arrastra para ver dónde estuvo</label>
-            <input type="range" id="slider-momento" min="0" max="0" value="0" oninput="moverSlider(this.value)">
-            <div class="slider-etiqueta" id="slider-etiqueta">—</div>
-          </div>
+        <div class="panel-slider">
+          <label>Momento del recorrido</label>
+          <input type="range" id="slider-momento" min="0" max="0" value="0" oninput="moverSlider(this.value)">
+          <div class="slider-etiqueta" id="slider-etiqueta">—</div>
+        </div>
 
-          <div class="punto-info" id="punto-info" style="display:none">
-            <div><b>PUNTO SELECCIONADO</b></div>
-            <div>Lat: <span id="punto-lat">—</span> &nbsp;·&nbsp; Lon: <span id="punto-lon">—</span></div>
-            <div>Fecha: <span id="punto-fecha">—</span> &nbsp;·&nbsp; Hora: <span id="punto-hora">—</span></div>
-          </div>
+        <div class="punto-info" id="punto-info" style="display:none">
+          <div><b>PUNTO SELECCIONADO</b></div>
+          <div>Lat: <span id="punto-lat">—</span> &nbsp;·&nbsp; Lon: <span id="punto-lon">—</span></div>
+          <div>Fecha: <span id="punto-fecha">—</span> &nbsp;·&nbsp; Hora: <span id="punto-hora">—</span></div>
         </div>
       </div>
 
@@ -523,10 +561,32 @@
     renderizarListaRecorridos(todosLosRecorridos);
   }
 
+  // Muestra/oculta el panel de filtro + lista, para darle más
+  // protagonismo al mapa una vez que ya se eligió un recorrido.
+  function mostrarPanelLista() {
+    document.getElementById('panel-lista-columna').classList.remove('oculto');
+    document.getElementById('boton-lista-toggle').classList.remove('visible');
+    // El mapa cambió de ancho disponible — Leaflet necesita que se le
+    // avise, o el mapa queda con un recorte visual hasta que alguien
+    // lo mueva.
+    setTimeout(function() { if (mapaHistorico) mapaHistorico.invalidateSize(); }, 50);
+  }
+
+  function ocultarPanelLista() {
+    document.getElementById('panel-lista-columna').classList.add('oculto');
+    document.getElementById('boton-lista-toggle').classList.add('visible');
+    setTimeout(function() { if (mapaHistorico) mapaHistorico.invalidateSize(); }, 50);
+  }
+
   function seleccionarRecorrido(id) {
     document.querySelectorAll('.tarjeta-recorrido').forEach(function(t) {
       t.classList.toggle('seleccionada', t.dataset.id === String(id));
     });
+
+    // Al elegir un recorrido, se oculta el panel de filtro/lista para
+    // dejarle todo el protagonismo al mapa — el usuario lo vuelve a
+    // abrir con el botón "☰ Recorridos" cuando quiera ver otro.
+    ocultarPanelLista();
 
     fetch('/puntos_recorrido?id=' + encodeURIComponent(id))
       .then(function(r) { return r.json(); })
@@ -564,7 +624,10 @@
       radius: 8, color: '#FFFFFF', weight: 2, fillColor: '#0B1F3A', fillOpacity: 1
     }).addTo(mapaHistorico);
 
-    document.getElementById('detalle-recorrido').style.display = 'block';
+    document.getElementById('detalle-recorrido').classList.add('visible');
+    // El mapa también cambió de ancho al aparecer esta barra lateral
+    // por primera vez.
+    setTimeout(function() { if (mapaHistorico) mapaHistorico.invalidateSize(); }, 50);
     document.getElementById('hist-hora-inicio').innerText = formatoHora(puntos[0].hora_recepcion);
     document.getElementById('hist-hora-fin').innerText = formatoHora(puntos[puntos.length - 1].hora_recepcion);
     document.getElementById('hist-num-puntos').innerText = puntos.length;
