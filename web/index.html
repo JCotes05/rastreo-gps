@@ -149,7 +149,7 @@
 <div class="envoltura">
 
   <div class="encabezado">
-    <h1> Rastreo Camiones🚚</h1>
+    <h1>Rastreo GPS en tiempo real 🚚</h1>
   </div>
 
   <div class="contenido-principal">
@@ -202,7 +202,6 @@
   });
 
   var marcador = null;
-  var primeraUbicacion = true;
 
   // La línea del recorrido completo — empieza vacía y se va llenando
   // con cada punto nuevo que llega, siguiendo el camino real.
@@ -241,15 +240,18 @@
         if (!isNaN(lat) && !isNaN(lon)) {
           var posicion = [lat, lon];
           if (marcador === null) {
+            // Primera ubicación real: crea el marcador y acerca el
+            // mapa a un zoom cercano (15), para no dejarlo con la
+            // vista amplia inicial de todo el país.
             marcador = L.marker(posicion, { icon: iconoCamion }).addTo(mapa);
+            mapa.setView(posicion, 15);
           } else {
             marcador.setLatLng(posicion);
-          }
-          // Solo centramos el mapa la PRIMERA vez que hay una ubicación
-          // real. Después, el usuario controla el zoom libremente.
-          if (primeraUbicacion) {
-            mapa.setView(posicion, 15);
-            primeraUbicacion = false;
+            // Corrección del profesor: el mapa se CENTRA en el camión
+            // con cada actualización — pero usando mapa.getZoom() en
+            // vez de un número fijo, así respeta el zoom que el
+            // usuario tenga en ese momento, sin resetearlo.
+            mapa.setView(posicion, mapa.getZoom());
           }
         }
       });
