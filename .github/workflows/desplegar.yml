@@ -51,6 +51,8 @@ jobs:
             sudo cp ~/despliegue/servidor_web.py ~/servidor_web.py
             sudo cp ~/despliegue/index.html /var/www/rastreo/index.html
             sudo cp ~/despliegue/valentina.conf /etc/nginx/sites-available/default
+            sudo rm -f /etc/nginx/sites-enabled/default
+            sudo ln -s /etc/nginx/sites-available/default /etc/nginx/sites-enabled/default
             sudo nginx -t
             sudo systemctl restart nginx
             sudo systemctl restart listener.service
@@ -89,6 +91,8 @@ jobs:
             sudo cp ~/despliegue/servidor_web.py ~/servidor_web.py
             sudo cp ~/despliegue/index.html /var/www/rastreo/index.html
             sudo cp ~/despliegue/jesus.conf /etc/nginx/sites-available/default
+            sudo rm -f /etc/nginx/sites-enabled/default
+            sudo ln -s /etc/nginx/sites-available/default /etc/nginx/sites-enabled/default
             sudo nginx -t
             sudo systemctl restart nginx
             sudo systemctl restart listener.service
