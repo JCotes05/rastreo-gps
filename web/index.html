@@ -67,6 +67,8 @@
     box-shadow: 0 20px 44px -26px rgba(11, 31, 58, 0.65);
     flex: 1 1 auto;
     min-width: 0;
+    width: 100%;
+    box-sizing: border-box;
   }
   #mapa { height: 560px; width: 100%; background: var(--gris-azul); }
 
@@ -171,7 +173,7 @@
   .panel-lista-columna { flex: 0 0 300px; display: flex; flex-direction: column; gap: 14px; min-width: 0; }
   .panel-lista-columna.oculto { display: none; }
 
-  .historicos-mapa-columna { flex: 1 1 auto; min-width: 0; }
+  .historicos-mapa-columna { flex: 1 1 auto; min-width: 0; width: 100%; box-sizing: border-box; }
   #mapa-historico { height: 560px; width: 100%; background: var(--gris-azul); }
 
   .historicos-detalle-lateral {
@@ -231,14 +233,30 @@
     .historicos-layout { flex-direction: column; }
     .panel-lista-columna { flex: 1 1 auto; width: 100%; }
     .historicos-detalle-lateral { flex: 1 1 auto; width: 100%; }
-    .boton-lista-toggle { writing-mode: horizontal-tb; width: 100%; justify-content: center; padding: 10px; }
+    .boton-lista-toggle { writing-mode: horizontal-tb; width: 100%; justify-content: center; padding: 12px; }
+    #mapa-historico { height: 400px; }
+    .lista-recorridos { max-height: 320px; }
   }
 
   @media (max-width: 560px) {
-    .encabezado h1 { font-size: 23px; }
-    #mapa { height: 380px; }
-    #mapa-historico { height: 320px; }
-    .dato-valor { font-size: 17px; }
+    .envoltura { padding: 20px 14px 36px; }
+    .encabezado { padding: 20px 18px; }
+    .encabezado h1 { font-size: 21px; }
+    .pestaña { padding: 10px 16px; font-size: 13px; }
+    #mapa { height: 340px; }
+    #mapa-historico { height: 300px; }
+    .barra-lateral, .historicos-detalle-lateral { gap: 10px; }
+    .dato { padding: 12px 14px; }
+    .dato-valor { font-size: 16px; }
+    .filtro-panel { padding: 14px; }
+    .boton-centrar { width: 42px; height: 42px; right: 12px; bottom: 12px; }
+  }
+
+  @media (max-width: 380px) {
+    .encabezado h1 { font-size: 19px; }
+    #mapa { height: 300px; }
+    .barra-lateral { flex-direction: column; }
+    .dato { flex: 1 1 auto; }
   }
 </style>
 </head>
@@ -362,6 +380,23 @@
     attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
     maxZoom: 19
   }).addTo(mapa);
+
+  // Arreglo para celulares: si el navegador termina de calcular el
+  // tamaño real del contenedor DESPUÉS de que el mapa ya se creó (muy
+  // común en móvil, por ejemplo mientras carga la tipografía), Leaflet
+  // se queda con un tamaño equivocado y el mapa se ve en blanco. Este
+  // aviso lo corrige poco después de cargar la página.
+  setTimeout(function() { mapa.invalidateSize(); }, 150);
+
+  // Y lo mismo cada vez que la ventana cambia de tamaño — al rotar el
+  // celular, o cuando el navegador oculta/muestra su barra de
+  // direcciones al hacer scroll (esto también dispara "resize").
+  window.addEventListener('resize', function() {
+    mapa.invalidateSize();
+    if (typeof mapaHistorico !== 'undefined' && mapaHistorico) {
+      mapaHistorico.invalidateSize();
+    }
+  });
 
   var iconoCamion = L.divIcon({
     html: '🚚',
@@ -502,8 +537,27 @@
       .then(function(r) { return r.json(); })
       .then(function(recorridos) {
         todosLosRecorridos = recorridos;
+        establecerLimitesFecha(recorridos);
         renderizarListaRecorridos(recorridos);
       });
+  }
+
+  // Ajusta el campo de fecha para que no se pueda escoger (ni
+  // escribir a mano) una fecha anterior al primer recorrido guardado,
+  // ni posterior al más reciente. /recorridos llega ordenado del más
+  // reciente al más antiguo, así que el límite superior sale del
+  // primer elemento, y el inferior del último.
+  function establecerLimitesFecha(recorridos) {
+    var inputFecha = document.getElementById('filtro-fecha');
+    if (recorridos.length === 0) {
+      inputFecha.removeAttribute('min');
+      inputFecha.removeAttribute('max');
+      return;
+    }
+    var masReciente = recorridos[0];
+    var masAntiguo = recorridos[recorridos.length - 1];
+    inputFecha.max = masReciente.hora_recepcion_fin.split('T')[0];
+    inputFecha.min = masAntiguo.hora_recepcion_inicio.split('T')[0];
   }
 
   // "2026-09-21T08:00:00.595702" -> "21/09 08:00"
@@ -537,7 +591,21 @@
   // El filtro no vuelve a preguntarle al servidor — filtra la lista
   // que ya se cargó en memoria, comparando fecha y hora como texto.
   function aplicarFiltro() {
-    var fecha = document.getElementById('filtro-fecha').value;
+    var inputFecha = document.getElementById('filtro-fecha');
+    var fecha = inputFecha.value;
+
+    // Respaldo: aunque min/max ya evitan esto en la mayoría de
+    // navegadores, si alguno permitiera escribir una fecha fuera de
+    // rango, la ajustamos al límite más cercano en vez de dejarla pasar.
+    if (fecha && inputFecha.min && fecha < inputFecha.min) {
+      fecha = inputFecha.min;
+      inputFecha.value = fecha;
+    }
+    if (fecha && inputFecha.max && fecha > inputFecha.max) {
+      fecha = inputFecha.max;
+      inputFecha.value = fecha;
+    }
+
     var desde = document.getElementById('filtro-desde').value;
     var hasta = document.getElementById('filtro-hasta').value;
 
