@@ -6,10 +6,19 @@ guarda en la base de datos PostgreSQL compartida (RDS).
 
 import socket
 import psycopg2
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 from basedatos import obtener_conexion, crear_tabla
 
 PUERTO = 5000
+
+# Los servidores de AWS corren en UTC por defecto, 5 horas adelante de
+# Colombia. Sin esto, datetime.now() guardaba la hora del servidor
+# (UTC) en vez de la hora real — lo que hacía que "hora_recepcion"
+# quedara 5 horas adelantada, y hasta la FECHA se corriera al día
+# siguiente para cualquier hora después de las 7:00 p.m. Colombia no
+# tiene horario de verano, así que un desfase fijo de -5 siempre es
+# correcto, sin necesitar tablas de husos horarios.
+COLOMBIA = timezone(timedelta(hours=-5))
 
 
 def parsear_mensaje(texto):
@@ -37,7 +46,7 @@ def guardar_ubicacion(id_dispositivo, latitud, longitud, hora_gps, id_recorrido)
         cursor.execute("""
             INSERT INTO ubicaciones (id_dispositivo, latitud, longitud, hora_gps, hora_recepcion, id_recorrido)
             VALUES (%s, %s, %s, %s, %s, %s)
-        """, (id_dispositivo, latitud, longitud, hora_gps, datetime.now().isoformat(), id_recorrido))
+        """, (id_dispositivo, latitud, longitud, hora_gps, datetime.now(COLOMBIA).isoformat(), id_recorrido))
         conexion.commit()
     except psycopg2.errors.UndefinedColumn:
         # La columna id_recorrido todavía no existe en la tabla real
@@ -49,7 +58,7 @@ def guardar_ubicacion(id_dispositivo, latitud, longitud, hora_gps, id_recorrido)
         cursor.execute("""
             INSERT INTO ubicaciones (id_dispositivo, latitud, longitud, hora_gps, hora_recepcion)
             VALUES (%s, %s, %s, %s, %s)
-        """, (id_dispositivo, latitud, longitud, hora_gps, datetime.now().isoformat()))
+        """, (id_dispositivo, latitud, longitud, hora_gps, datetime.now(COLOMBIA).isoformat()))
         conexion.commit()
         print("[AVISO] La columna id_recorrido no existe todavía — se guardó sin ella.")
     finally:
@@ -76,7 +85,7 @@ def iniciar_listener():
 
         latitud, longitud, hora_gps, id_recorrido = resultado
         guardar_ubicacion(ip_origen, latitud, longitud, hora_gps, id_recorrido)
-        fecha_hora = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
+        fecha_hora = datetime.now(COLOMBIA).strftime("%d/%m/%Y %H:%M:%S")
         print(f"[GUARDADO] {fecha_hora} — {ip_origen} → lat={latitud}, lon={longitud}, recorrido={id_recorrido}")
 
 
