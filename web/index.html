@@ -213,17 +213,16 @@
 
   /* Detalle de una ruta */
   .volver { border: 0; background: transparent; color: var(--claro); font-size: 13px; font-weight: 800; cursor: pointer; padding: 4px 0 10px; }
-  .filas-datos { display: flex; flex-direction: column; gap: 8px; }
-  .fila-dato { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; font-size: 13px; }
-  .fila-dato .etq { display: flex; align-items: center; gap: 7px; padding-top: 2px; font-size: 10.5px; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase; color: var(--gris-azul); }
-  .fila-dato .val { text-align: right; font-weight: 800; }
-  .fila-dato .val small { display: block; font-size: 11.5px; font-weight: 600; opacity: 0.8; }
-  .punto-color { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
+  /* En la tarjeta del detalle, un punto de color junto a Desde / Hasta explica
+     los marcadores del mapa (verde = inicio, naranja oscuro = fin). */
+  .tarjeta-detalle .tarjeta-etq { display: flex; align-items: center; gap: 6px; width: 68px; }
+  .punto-color { width: 9px; height: 9px; border-radius: 50%; display: inline-block; flex: none; }
   .slider-etiqueta { margin-top: 8px; font-size: 14px; font-weight: 800; }
   .punto-info { background: var(--oscuro); border-radius: 12px; padding: 12px 14px; margin-bottom: 12px; font-size: 13px; line-height: 1.6; }
   .punto-info b { font-size: 11px; letter-spacing: 0.08em; color: var(--gris-azul); }
   .sub-titulo { margin: 18px 2px 8px; font-size: 11px; font-weight: 800; letter-spacing: 0.1em; text-transform: uppercase; color: var(--gris-azul); }
   .resultado-sub { margin-top: 10px; padding: 12px 14px; border-radius: 12px; background: var(--claro); color: var(--oscuro); font-size: 13px; line-height: 1.5; }
+  .nota-ajuste { margin: 0 0 10px; padding: 8px 10px; border-left: 4px solid var(--medio); border-radius: 6px; background: rgba(31, 59, 92, 0.12); font-size: 12.5px; font-weight: 700; line-height: 1.4; }
   .pasada {
     display: block; width: 100%; margin-top: 7px; padding: 8px 10px; text-align: left; border: 0; border-radius: 8px; cursor: pointer;
     background: rgba(11, 31, 58, 0.09); color: var(--oscuro); font-size: 12.5px; font-weight: 600; line-height: 1.5;
@@ -327,8 +326,8 @@
 
         <div class="panel" id="panel-zona" hidden>
           <p class="ayuda" id="ayuda-zona">Toca el mapa para colocar el centro de la zona.</p>
-          <label for="radio-zona">Radio: <span id="radio-texto">490 m</span></label>
-          <input type="range" id="radio-zona" min="0" max="100" value="30" oninput="cambiarRadio(this.value, 'principal')">
+          <label for="radio-zona">Radio: <span id="radio-texto">500 m</span></label>
+          <input type="range" id="radio-zona" min="0" max="100" value="27" oninput="cambiarRadio(this.value, 'principal')">
           <div class="fila-botones">
             <button class="btn btn-secundario" onclick="armarCentro('principal')">Mover centro</button>
             <button class="btn btn-secundario" onclick="limpiarFiltros()">Limpiar</button>
@@ -350,29 +349,12 @@
         <button class="volver" onclick="volverALista()">← Volver a las rutas</button>
 
         <div class="tarjeta-recorrido tarjeta-detalle" id="detalle-tarjeta">
-          <div class="tarjeta-linea"><span class="tarjeta-etq">Desde</span><span class="tarjeta-val" id="detalle-desde">—</span></div>
-          <div class="tarjeta-linea"><span class="tarjeta-etq">Hasta</span><span class="tarjeta-val" id="detalle-hasta">—</span></div>
+          <div class="tarjeta-linea"><span class="tarjeta-etq"><i class="punto-color" style="background:#0F766E"></i>Desde</span><span class="tarjeta-val" id="detalle-desde">—</span></div>
+          <div class="tarjeta-linea"><span class="tarjeta-etq"><i class="punto-color" style="background:#C2410C"></i>Hasta</span><span class="tarjeta-val" id="detalle-hasta">—</span></div>
         </div>
 
         <div class="panel">
-          <div class="filas-datos">
-            <div class="fila-dato">
-              <span class="etq"><i class="punto-color" style="background:#0F766E"></i>Inicio</span>
-              <span class="val"><span id="res-inicio-hora">—</span><small id="res-inicio-pos"></small></span>
-            </div>
-            <div class="fila-dato">
-              <span class="etq"><i class="punto-color" style="background:#C2410C"></i>Fin</span>
-              <span class="val"><span id="res-fin-hora">—</span><small id="res-fin-pos"></small></span>
-            </div>
-            <div class="fila-dato">
-              <span class="etq">Puntos</span>
-              <span class="val" id="res-puntos">—</span>
-            </div>
-          </div>
-        </div>
-
-        <div class="panel">
-          <label for="slider-momento">Momento del recorrido</label>
+          <label for="slider-momento" id="etq-slider">Momento del recorrido</label>
           <input type="range" id="slider-momento" min="0" max="0" value="0" oninput="moverSlider(this.value)">
           <div class="slider-etiqueta" id="slider-etiqueta">—</div>
         </div>
@@ -402,8 +384,8 @@
 
         <div class="panel" id="sub-panel-zona" hidden>
           <p class="ayuda" id="ayuda-sub-zona">Toca el mapa para colocar el centro de la zona.</p>
-          <label for="sub-radio">Radio: <span id="sub-radio-texto">490 m</span></label>
-          <input type="range" id="sub-radio" min="0" max="100" value="30" oninput="cambiarRadio(this.value, 'sub')">
+          <label for="sub-radio">Radio: <span id="sub-radio-texto">500 m</span></label>
+          <input type="range" id="sub-radio" min="0" max="100" value="27" oninput="cambiarRadio(this.value, 'sub')">
           <div class="fila-botones">
             <button class="btn btn-secundario" onclick="armarCentro('sub')">Mover centro</button>
             <button class="btn btn-secundario" onclick="limpiarResultadosSub(true)">Quitar</button>
@@ -478,10 +460,11 @@
   }
 
   // Radio de las zonas: el deslizador (0-100) se convierte en metros con
-  // una escala logarítmica, de 100 m a 20 km — así hay precisión tanto
-  // para zonas pequeñas como para zonas grandes.
+  // una escala logarítmica, de 100 m a 40 km — así hay precisión tanto
+  // para zonas pequeñas como para zonas grandes. (Con el valor inicial 27
+  // el radio es 500 m.)
   function radioDesdeSlider(v) {
-    var m = 100 * Math.pow(200, v / 100);
+    var m = 100 * Math.pow(400, v / 100);
     return m < 1000 ? Math.round(m / 10) * 10 : Math.round(m / 100) * 100;
   }
   function textoRadio(m) {
@@ -682,8 +665,8 @@
   var lineaDetalle = null, marcadorInicio = null, marcadorFin = null, marcadorSlider = null;
 
   // Zonas (círculos): una para el primer filtrado y otra para el filtrado dentro de la ruta.
-  var zonaP = { centro: null, radio: 490, circulo: null };
-  var zonaS = { centro: null, radio: 490, circulo: null };
+  var zonaP = { centro: null, radio: 500, circulo: null };
+  var zonaS = { centro: null, radio: 500, circulo: null };
   var armado = null;              // null | 'principal' | 'sub' — el próximo clic en el mapa coloca el centro
 
   function inicializarHistoricos() {
@@ -1067,11 +1050,6 @@
     porId('detalle-tarjeta').style.borderLeftColor = color;
     porId('detalle-desde').textContent = fechaCorta(r.hora_recepcion_inicio);
     porId('detalle-hasta').textContent = fechaCorta(r.hora_recepcion_fin);
-    porId('res-inicio-hora').textContent = fechaLarga(r.hora_recepcion_inicio);
-    porId('res-inicio-pos').textContent = Number(r.lat_inicio).toFixed(5) + ', ' + Number(r.lon_inicio).toFixed(5);
-    porId('res-fin-hora').textContent = fechaLarga(r.hora_recepcion_fin);
-    porId('res-fin-pos').textContent = Number(r.lat_fin).toFixed(5) + ', ' + Number(r.lon_fin).toFixed(5);
-    porId('res-puntos').textContent = r.num_puntos;
   }
 
   function dibujarDetalle(puntos, color) {
@@ -1084,18 +1062,14 @@
     // muestran sus datos exactos (el slider salta a ese punto).
     lineaDetalle.on('click', function (e) {
       if (armado) { return; }
-      moverSlider(indiceMasCercano(e.latlng), true);
+      moverSliderAIndiceReal(indiceMasCercano(e.latlng));
     });
 
     marcadorInicio = L.circleMarker(coords[0], { radius: 10, color: '#FFFFFF', weight: 3, fillColor: '#0F766E', fillOpacity: 1 }).addTo(capaDetalle);
     marcadorFin = L.circleMarker(coords[coords.length - 1], { radius: 10, color: '#FFFFFF', weight: 3, fillColor: '#C2410C', fillOpacity: 1 }).addTo(capaDetalle);
     marcadorSlider = L.circleMarker(coords[0], { radius: 6, color: '#FFFFFF', weight: 2, fillColor: '#0B1F3A', fillOpacity: 1 }).addTo(capaDetalle);
 
-    var slider = porId('slider-momento');
-    slider.min = 0;
-    slider.max = puntos.length - 1;
-    slider.value = 0;
-    moverSlider(0);
+    configurarSlider(null, 0);      // sin filtro: el slider recorre TODA la ruta
 
     mapaHistorico.fitBounds(lineaDetalle.getBounds(), opcionesAjuste());
   }
@@ -1117,16 +1091,65 @@
     return mejor;
   }
 
-  // El slider va de 0 al último índice de los puntos ya descargados: mover
-  // el control NO le pregunta nada al servidor.
-  function moverSlider(indice, desdeMapa) {
-    indice = parseInt(indice, 10);
-    if (!rutaSel || !rutaSel.puntos || !rutaSel.puntos[indice]) { return; }
-    var punto = rutaSel.puntos[indice];
-    if (desdeMapa) { porId('slider-momento').value = indice; }
+  // El slider normalmente recorre TODA la ruta. Cuando hay un tramo
+  // filtrado (por tiempo o por zona) recorre SOLO los puntos de ese tramo:
+  // "indicesSlider" es la lista de posiciones REALES de la ruta que el
+  // slider puede alcanzar (null = toda la ruta). Mover el slider NO le
+  // pregunta nada al servidor: los puntos ya están descargados.
+  var indicesSlider = null;
+  var indiceActual = 0;           // posición real (en la ruta) del punto seleccionado ahora
+
+  function configurarSlider(indices, indiceRealInicial) {
+    indicesSlider = indices;
+    var total = indices ? indices.length : rutaSel.puntos.length;
+    var pos = 0;
+    if (indiceRealInicial !== undefined) {
+      pos = indices ? indices.indexOf(indiceRealInicial) : indiceRealInicial;
+      if (pos < 0) { pos = 0; }
+    }
+    var slider = porId('slider-momento');
+    slider.min = 0;
+    slider.max = total - 1;
+    slider.value = pos;
+    porId('etq-slider').textContent = indices ? 'Momento del tramo seleccionado' : 'Momento del recorrido';
+    moverSlider(pos);
+  }
+
+  // Al quitar el filtro el slider vuelve a recorrer toda la ruta, y se
+  // queda en el mismo punto en el que estaba.
+  function restaurarSliderCompleto() {
+    if (indicesSlider === null) { return; }
+    if (!rutaSel || !rutaSel.puntos) { indicesSlider = null; return; }
+    configurarSlider(null, indiceActual);
+  }
+
+  function rangoIndices(desde, hasta) {
+    var r = [];
+    for (var i = desde; i <= hasta; i++) { r.push(i); }
+    return r;
+  }
+
+  // "pos" es la posición del slider (no necesariamente la del punto en la ruta).
+  function moverSlider(pos) {
+    pos = parseInt(pos, 10);
+    if (!rutaSel || !rutaSel.puntos) { return; }
+    var real = indicesSlider ? indicesSlider[pos] : pos;
+    var punto = rutaSel.puntos[real];
+    if (!punto) { return; }
+    indiceActual = real;
     if (marcadorSlider) { marcadorSlider.setLatLng([punto.lat, punto.lon]); }
     porId('slider-etiqueta').textContent = fechaLarga(punto.hora_recepcion);
     mostrarInfoPunto(punto);
+  }
+
+  // Selecciona un punto por su posición REAL en la ruta (clic sobre la
+  // línea, botón de una pasada). Con un tramo filtrado, los puntos que
+  // quedan fuera del tramo se ignoran.
+  function moverSliderAIndiceReal(real) {
+    var pos = indicesSlider ? indicesSlider.indexOf(real) : real;
+    if (pos < 0) { return; }
+    porId('slider-momento').value = pos;
+    moverSlider(pos);
   }
 
   function mostrarInfoPunto(punto) {
@@ -1195,6 +1218,7 @@
   function limpiarResultadosSub(quitarCirculo) {
     if (capaSub) { capaSub.clearLayers(); }
     atenuarRuta(false);
+    restaurarSliderCompleto();
     porId('resultado-sub').hidden = true;
     porId('resultado-sub').innerHTML = '';
     porId('aviso-sub').textContent = '';
@@ -1252,6 +1276,20 @@
     if (!ini && !fin) { avisoSub('Elige al menos un instante de inicio o de fin.'); return; }
     if (ini && fin && ini > fin) { avisoSub('El fin debe ser posterior al inicio.'); return; }
 
+    // Si el usuario elige un instante ANTES de que empiece la ruta o DESPUÉS
+    // de que termine, se corrige solo al más cercano que sí esté dentro de
+    // la ruta, se actualizan los campos y se le avisa.
+    var pts = rutaSel.puntos;
+    var rutaMin = pts[0].hora_recepcion.slice(0, 16);
+    var rutaMax = pts[pts.length - 1].hora_recepcion.slice(0, 16);
+    var ajustado = false;
+    function acotar(v) { return v < rutaMin ? rutaMin : (v > rutaMax ? rutaMax : v); }
+    if (ini && acotar(ini) !== ini) { ini = acotar(ini); porId('sub-inicio').value = ini; ajustado = true; }
+    if (fin && acotar(fin) !== fin) { fin = acotar(fin); porId('sub-fin').value = fin; ajustado = true; }
+    var nota = ajustado
+      ? '<div class="nota-ajuste">No se encontró recorrido en el horario seleccionado. Se ajustó automáticamente al más cercano dentro de la ruta.</div>'
+      : '';
+
     // Las horas de los puntos son texto ISO ("2026-09-27T20:43:12..."), que
     // se ordena igual que el tiempo: se pueden comparar como texto.
     var desde = ini || '';
@@ -1262,17 +1300,18 @@
       if (t >= desde && t <= hasta) { if (primero < 0) { primero = i; } ultimo = i; }
     });
 
-    if (primero < 0) { mostrarResultadoSub('Ningún punto de esta ruta cae en ese rango de tiempo.'); return; }
+    if (primero < 0) { mostrarResultadoSub(nota + 'Ningún punto de esta ruta cae en ese rango de tiempo.'); return; }
 
     var limites = dibujarTramo(primero, ultimo);
     reordenarDetalle();
     mapaHistorico.fitBounds(limites, opcionesAjuste());
-    var pts = rutaSel.puntos;
+    configurarSlider(rangoIndices(primero, ultimo));     // el slider recorre solo este tramo
     mostrarResultadoSub(
+      nota +
       '<b>Tramo seleccionado</b><br>' +
       'Inicio: ' + fechaLarga(pts[primero].hora_recepcion) + '<br>' +
       'Fin: ' + fechaLarga(pts[ultimo].hora_recepcion) + '<br>' +
-      (ultimo - primero + 1) + ' puntos'
+      (ultimo - primero + 1 === 1 ? '1 punto' : (ultimo - primero + 1) + ' puntos')
     );
   }
 
@@ -1295,12 +1334,16 @@
         'Entrada: ' + fechaLarga(pts[ps.desde].hora_recepcion) + '<br>' +
         'Salida: ' + fechaLarga(pts[ps.hasta].hora_recepcion);
       b.addEventListener('click', function () {
-        moverSlider(ps.desde, true);
+        moverSliderAIndiceReal(ps.desde);
         mapaHistorico.fitBounds(limites[k], opcionesAjuste());
       });
       return b;
     });
     reordenarDetalle();
+    // El slider recorre solo los puntos que están dentro de la zona (todas las pasadas).
+    var enZona = [];
+    pasadas.forEach(function (ps) { enZona = enZona.concat(rangoIndices(ps.desde, ps.hasta)); });
+    configurarSlider(enZona);
     mapaHistorico.fitBounds(unirBounds(limites.concat([zonaS.circulo.getBounds()])), opcionesAjuste());
     mostrarResultadoSub('<b>' + (pasadas.length === 1 ? 'Tramo dentro de la zona' : pasadas.length + ' pasadas por la zona') + '</b>', botones);
   }
