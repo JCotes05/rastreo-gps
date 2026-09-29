@@ -195,6 +195,7 @@
   .etiqueta-resultados { flex: 1; font-size: 11px; font-weight: 800; letter-spacing: 0.1em; text-transform: uppercase; color: var(--gris-azul); }
   .accion-lista { flex: none; white-space: nowrap; border: 0; background: transparent; color: var(--claro); font-size: 12px; font-weight: 800; text-decoration: underline; cursor: pointer; padding: 2px 4px; }
   .lista-recorridos { display: flex; flex-direction: column; gap: 9px; }
+  .btn-ver-todas { display: block; width: 100%; margin-top: 12px; }
   .lista-vacia { text-align: center; font-size: 13px; line-height: 1.45; padding: 18px 12px; border: 1px dashed var(--gris-azul); border-radius: 12px; }
 
   .tarjeta-recorrido {
@@ -342,6 +343,7 @@
           <button class="accion-lista" id="accion-lista" onclick="restaurarLista()" hidden>Ver todas</button>
         </div>
         <div class="lista-recorridos" id="lista-recorridos"></div>
+        <button class="btn btn-secundario btn-ver-todas" id="btn-ver-todas" onclick="alternarTodasLasRutas()" hidden>Ver todas las rutas registradas</button>
       </div>
 
       <!-- ---------- VISTA 2: detalle de la ruta elegida ---------- -->
@@ -734,6 +736,34 @@
     cargarResultados('/recorridos?limite=4', 'Últimas rutas', 'Todavía no hay rutas registradas.');
   }
 
+  // El botón "Ver todas las rutas registradas" / "Mostrar solo las
+  // últimas 4" debajo de la lista: alterna entre los dos según cuál
+  // esté mostrando ahora mismo (etiquetaBase).
+  function alternarTodasLasRutas() {
+    if (etiquetaBase === 'Todas las rutas registradas') {
+      mostrarUltimasRutas();
+    } else {
+      cargarResultados('/recorridos?limite=todas', 'Todas las rutas registradas', 'Todavía no hay rutas registradas.');
+    }
+  }
+
+  // Muestra/oculta y rotula ese botón. Solo tiene sentido en las dos
+  // vistas "sin filtro real" (últimas rutas / todas); con un filtro de
+  // fecha o zona aplicado, o con un subconjunto de rutas coincidentes,
+  // se oculta.
+  function actualizarBotonVerTodas(etiqueta) {
+    var btn = porId('btn-ver-todas');
+    if (etiqueta === 'Últimas rutas') {
+      btn.hidden = false;
+      btn.textContent = 'Ver todas las rutas registradas';
+    } else if (etiqueta === 'Todas las rutas registradas') {
+      btn.hidden = false;
+      btn.textContent = 'Mostrar solo las últimas 4';
+    } else {
+      btn.hidden = true;
+    }
+  }
+
   // Pide una lista de rutas al servidor, la muestra como tarjetas y
   // dibuja TODAS en el mapa, cada una de un color.
   function cargarResultados(url, etiqueta, mensajeVacio) {
@@ -743,6 +773,7 @@
     subconjuntoActivo = false;
     porId('etiqueta-resultados').textContent = etiqueta;
     porId('accion-lista').hidden = true;
+    actualizarBotonVerTodas(etiqueta);
     capaRutas.clearLayers();
     lineasPorId = {};
     puntosPorId = {};
@@ -999,6 +1030,7 @@
     resaltarRutas(ids);
     porId('etiqueta-resultados').textContent = 'Rutas que coinciden en este trayecto';
     porId('accion-lista').hidden = false;
+    porId('btn-ver-todas').hidden = true;
     renderizarTarjetas(rutasActuales.filter(function (r) { return ids.indexOf(r.id_recorrido) >= 0; }), '');
     alternarMenu(true);
   }
@@ -1010,6 +1042,7 @@
     quitarResaltado();
     porId('etiqueta-resultados').textContent = etiquetaBase;
     porId('accion-lista').hidden = true;
+    actualizarBotonVerTodas(etiquetaBase);
     renderizarTarjetas(rutasActuales, vacioBase);
   }
 
