@@ -9,7 +9,8 @@ para LEER, y responde estas rutas:
   /datos                  último punto GPS (Tiempo Real)
   /recorrido              puntos del recorrido en curso (Tiempo Real)
   /recorridos             resumen de recorridos, con filtro opcional por
-                          rango de fecha/hora (?desde=...&hasta=...&limite=N)
+                          rango de fecha/hora (?desde=...&hasta=...&limite=N).
+                          limite=todas quita el tope (botón "Ver todas").
   /recorridos_zona        recorridos que pasaron por un círculo
                           (?lat=...&lon=...&radio=metros)
   /recorridos_rango       primera y última fecha con datos (límites del calendario)
@@ -188,8 +189,12 @@ def obtener_lista_recorridos(limite=30, desde=None, hasta=None):
     con ese rango: empezaron antes del fin del rango Y terminaron
     después de su inicio — un viaje de varios días aparece si cualquier
     parte suya cae dentro de la ventana.
+
+    El valor especial limite="todas" quita el tope por completo: es lo
+    que pide el botón "Ver todas las rutas registradas".
     """
-    limite = _limitar(limite)
+    sin_limite = (limite == "todas")
+    limite = None if sin_limite else _limitar(limite)
     desde = _normalizar_instante(desde, es_fin=False)
     hasta = _normalizar_instante(hasta, es_fin=True)
 
@@ -214,8 +219,8 @@ def obtener_lista_recorridos(limite=30, desde=None, hasta=None):
             GROUP BY id_recorrido
             {having}
             ORDER BY MIN(id) DESC
-            LIMIT %s
-        """, parametros + [limite])
+            {"" if sin_limite else "LIMIT %s"}
+        """, parametros if sin_limite else parametros + [limite])
         resultado = _resumir_grupos(cursor, cursor.fetchall())
     except psycopg2.errors.UndefinedColumn:
         conexion.rollback()
@@ -311,7 +316,9 @@ def obtener_geometria_de_recorridos(ids, paso=1):
     el primero y el último): para DIBUJAR una vista general no hace
     falta la resolución completa, y así la respuesta pesa mucho menos.
     """
-    ids = [i for i in ids if i][:50]
+    # 300 (no 50): con el botón "Ver todas las rutas registradas" puede
+    # llegar la lista completa de recorridos de una vez.
+    ids = [i for i in ids if i][:300]
     if not ids:
         return {}
     paso = _limitar(paso, por_defecto=1, maximo=1000)
