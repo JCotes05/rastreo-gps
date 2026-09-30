@@ -15,8 +15,10 @@ para LEER, y responde estas rutas:
                           (?lat=...&lon=...&radio=metros)
   /recorridos_rango       primera y última fecha con datos (límites del calendario)
   /puntos_recorrido       todos los puntos de UN recorrido (?id=...)
-  /puntos_recorridos      la geometría de VARIOS recorridos de una vez
-                          (?ids=a,b,c&paso=N) para dibujarlos juntos en el mapa
+  /puntos_recorridos      la geometría (y hora) de VARIOS recorridos de una
+                          vez (?ids=a,b,c&paso=N) para dibujarlos juntos en
+                          el mapa y resaltar el tramo de cada uno que cae
+                          dentro del filtro activo
 """
 
 import json
@@ -308,9 +310,13 @@ def obtener_rango_fechas():
 
 def obtener_geometria_de_recorridos(ids, paso=1):
     """
-    Devuelve {id_recorrido: [[lat, lon], ...]} para VARIOS recorridos en
-    una sola consulta — lo que necesita el mapa para dibujar de golpe
-    todas las rutas de un filtro, cada una de un color.
+    Devuelve, para VARIOS recorridos a la vez:
+        {id_recorrido: {"pts": [[lat, lon], ...], "horas": [hora_recepcion, ...]}}
+    "pts" y "horas" van índice a índice (horas[i] es el instante del
+    punto pts[i]) — es lo que necesita el mapa para dibujar de golpe
+    todas las rutas de un filtro, cada una de un color, y ADEMÁS poder
+    resaltar en el momento el tramo de cada una que cae dentro de un
+    filtro por fecha o por zona, sin tener que abrir ninguna ruta.
 
     `paso` reduce la cantidad de puntos (1 de cada N, siempre conservando
     el primero y el último): para DIBUJAR una vista general no hace
@@ -328,7 +334,7 @@ def obtener_geometria_de_recorridos(ids, paso=1):
     filas = []
     try:
         cursor.execute("""
-            SELECT id_recorrido, latitud, longitud
+            SELECT id_recorrido, latitud, longitud, hora_recepcion
             FROM ubicaciones
             WHERE id_recorrido = ANY(%s)
             ORDER BY id_recorrido, id ASC
@@ -341,16 +347,20 @@ def obtener_geometria_de_recorridos(ids, paso=1):
         conexion.close()
 
     agrupado = {}
-    for id_recorrido, lat, lon in filas:
-        agrupado.setdefault(id_recorrido, []).append([lat, lon])
+    for id_recorrido, lat, lon, hora in filas:
+        grupo = agrupado.setdefault(id_recorrido, {"pts": [], "horas": []})
+        grupo["pts"].append([lat, lon])
+        grupo["horas"].append(hora)
 
     if paso > 1:
-        for id_recorrido, puntos in agrupado.items():
-            if len(puntos) > 2:
-                reducidos = puntos[::paso]
-                if reducidos[-1] is not puntos[-1]:
-                    reducidos.append(puntos[-1])
-                agrupado[id_recorrido] = reducidos
+        for grupo in agrupado.values():
+            if len(grupo["pts"]) > 2:
+                pts_red = grupo["pts"][::paso]
+                horas_red = grupo["horas"][::paso]
+                if pts_red[-1] is not grupo["pts"][-1]:
+                    pts_red.append(grupo["pts"][-1])
+                    horas_red.append(grupo["horas"][-1])
+                grupo["pts"], grupo["horas"] = pts_red, horas_red
     return agrupado
 
 
