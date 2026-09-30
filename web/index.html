@@ -1140,7 +1140,14 @@
     porId('vista-lista').hidden = true;
     porId('vista-detalle').hidden = false;
     porId('menu-cuerpo').scrollTop = 0;
+    // Al abrir el detalle se ocultan las rutas del resultado, sus tramos
+    // resaltados y el círculo del primer filtrado: si había un filtro por
+    // zona, su círculo se vuelve a dibujar (idéntico) dentro del detalle
+    // (ver heredarFiltroPrimario) y dos círculos iguales superpuestos
+    // solo estorban.
     if (mapaHistorico.hasLayer(capaRutas)) { mapaHistorico.removeLayer(capaRutas); }
+    if (mapaHistorico.hasLayer(capaTramosResultado)) { mapaHistorico.removeLayer(capaTramosResultado); }
+    if (mapaHistorico.hasLayer(capaZona)) { mapaHistorico.removeLayer(capaZona); }
     reiniciarSubfiltros();
     rellenarResumen(resumen, rutaSel.color);
     porId('punto-info').hidden = true;
@@ -1317,7 +1324,10 @@
     capaDetalle.clearLayers();
     lineaDetalle = marcadorInicio = marcadorFin = marcadorSlider = null;
     rutaSel = null;
+    // Vuelven las capas que se ocultaron al abrir el detalle (ver seleccionarRecorrido).
     if (!mapaHistorico.hasLayer(capaRutas)) { mapaHistorico.addLayer(capaRutas); }
+    if (!mapaHistorico.hasLayer(capaTramosResultado)) { mapaHistorico.addLayer(capaTramosResultado); }
+    if (!mapaHistorico.hasLayer(capaZona)) { mapaHistorico.addLayer(capaZona); }
     restaurarResaltado();
     ajustarAResultados();
   }
