@@ -651,7 +651,7 @@
   // =====================================================================
 
   var mapaHistorico = null;
-  var capaRutas, capaZona, capaDetalle, capaSub, capaSubZona;   // grupos de capas del mapa
+  var capaRutas, capaTramosResultado, capaZona, capaDetalle, capaSub, capaSubZona;   // grupos de capas del mapa
 
   var vistaActual = 'lista';      // 'lista' | 'detalle'
   var tipoFiltro = null;          // null | 'fecha' | 'zona'   (primer filtrado)
@@ -661,7 +661,7 @@
   var rutasActuales = [];         // resúmenes de las rutas que se están mostrando
   var etiquetaBase = 'Últimas rutas', vacioBase = '';
   var subconjuntoActivo = false;  // ¿la lista muestra solo las rutas de un trayecto coincidente?
-  var colorPorId = {}, puntosPorId = {}, lineasPorId = {};
+  var colorPorId = {}, puntosPorId = {}, horasPorId = {}, lineasPorId = {};
 
   var rutaSel = null;             // { resumen, puntos, color } de la ruta abierta en el detalle
   var lineaDetalle = null, marcadorInicio = null, marcadorFin = null, marcadorSlider = null;
@@ -680,6 +680,7 @@
     L.control.zoom({ position: 'bottomright' }).addTo(mapaHistorico);
 
     capaRutas = L.layerGroup().addTo(mapaHistorico);
+    capaTramosResultado = L.layerGroup().addTo(mapaHistorico);
     capaZona = L.layerGroup().addTo(mapaHistorico);
     capaDetalle = L.layerGroup().addTo(mapaHistorico);
     capaSub = L.layerGroup().addTo(mapaHistorico);
@@ -775,8 +776,10 @@
     porId('accion-lista').hidden = true;
     actualizarBotonVerTodas(etiqueta);
     capaRutas.clearLayers();
+    capaTramosResultado.clearLayers();
     lineasPorId = {};
     puntosPorId = {};
+    horasPorId = {};
     porId('lista-recorridos').innerHTML = '<div class="lista-vacia">Cargando…</div>';
 
     pedirJSON(url).then(function (lista) {
@@ -838,16 +841,92 @@
     pedirJSON('/puntos_recorridos?ids=' + encodeURIComponent(ids.join(',')) + '&paso=' + paso).then(function (porRuta) {
       if (token !== tokenBusqueda) { return; }
       lista.forEach(function (r) {
-        var pts = porRuta[r.id_recorrido];
-        if (!pts || pts.length === 0) { return; }
-        puntosPorId[r.id_recorrido] = pts;
-        lineasPorId[r.id_recorrido] = L.polyline(pts, {
+        var datos = porRuta[r.id_recorrido];
+        if (!datos || !datos.pts || datos.pts.length === 0) { return; }
+        puntosPorId[r.id_recorrido] = datos.pts;
+        horasPorId[r.id_recorrido] = datos.horas;
+        lineasPorId[r.id_recorrido] = L.polyline(datos.pts, {
           color: colorPorId[r.id_recorrido], weight: 5, opacity: 0.9, lineJoin: 'round',
           interactive: false        // los clics los atiende el mapa (ver alClicMapaHistorico)
         }).addTo(capaRutas);
       });
       ajustarAResultados();
+      resaltarTramosDelFiltro();
     }).catch(function (e) { console.error(e); });
+  }
+
+  // Con un filtro por fecha o por zona activo (primer filtrado), resalta
+  // DE UNA VEZ, sobre cada ruta del resultado, el tramo que cae dentro
+  // de ese filtro — sin tener que abrir ninguna ruta. Usa los puntos ya
+  // descargados para dibujar la lista (puntosPorId/horasPorId), que son
+  // una versión reducida de la ruta: por eso, al abrir una ruta en
+  // concreto, el tramo se vuelve a calcular con toda su resolución
+  // (ver heredarFiltroPrimario).
+  function resaltarTramosDelFiltro() {
+    capaTramosResultado.clearLayers();
+    if (tipoFiltro === 'zona' && zonaP.centro) {
+      rutasActuales.forEach(function (r) {
+        var pts = puntosPorId[r.id_recorrido];
+        if (!pts) { return; }
+        pasadasEnArray(pts, zonaP.centro.lat, zonaP.centro.lng, zonaP.radio).forEach(function (p) {
+          dibujarTramoEnCapa(capaTramosResultado, pts.slice(p.desde, p.hasta + 1), colorPorId[r.id_recorrido]);
+        });
+      });
+    } else if (tipoFiltro === 'fecha') {
+      var desde = porId('filtro-inicio').value;
+      var finCampo = porId('filtro-fin').value;
+      if (!desde && !finCampo) { return; }
+      var hasta = finCampo ? finCampo + ':59.999999' : '\uffff';
+      rutasActuales.forEach(function (r) {
+        var pts = puntosPorId[r.id_recorrido], horas = horasPorId[r.id_recorrido];
+        if (!pts || !horas) { return; }
+        var rango = rangoFechaEnArray(horas, desde || '', hasta);
+        if (rango) { dibujarTramoEnCapa(capaTramosResultado, pts.slice(rango.desde, rango.hasta + 1), colorPorId[r.id_recorrido]); }
+      });
+    }
+  }
+
+  // Dibuja un tramo resaltado (línea gruesa con halo + marcadores en los
+  // extremos) en la capa indicada, con las coordenadas [lat, lon] dadas.
+  // La comparten el resaltado de la lista (varias rutas) y el resaltado
+  // de una ruta abierta en el detalle (dibujarTramo).
+  function dibujarTramoEnCapa(capa, coords, color) {
+    var base = { lineCap: 'round', lineJoin: 'round', interactive: false };
+    L.polyline(coords, Object.assign({ color: '#0B1F3A', weight: 16, opacity: 0.85 }, base)).addTo(capa);
+    L.polyline(coords, Object.assign({ color: color, weight: 8, opacity: 1 }, base)).addTo(capa);
+    var estilo = { radius: 7, color: '#0B1F3A', weight: 3, fillColor: '#E6E9EF', fillOpacity: 1, interactive: false };
+    L.circleMarker(coords[0], estilo).addTo(capa);
+    if (coords.length > 1) { L.circleMarker(coords[coords.length - 1], estilo).addTo(capa); }
+    return L.latLngBounds(coords);
+  }
+
+  // Igual que calcularPasadas (más abajo), pero para puntos [lat, lon]
+  // en vez de objetos {lat, lon}: los que trae la vista de lista.
+  function pasadasEnArray(pts, lat, lon, radio) {
+    var pasadas = [], actual = null;
+    for (var i = 0; i < pts.length; i++) {
+      var dentro = distanciaMetros(lat, lon, pts[i][0], pts[i][1]) <= radio;
+      if (dentro) {
+        if (actual === null) { actual = { desde: i, hasta: i }; } else { actual.hasta = i; }
+      } else if (actual !== null) {
+        pasadas.push(actual);
+        actual = null;
+      }
+    }
+    if (actual !== null) { pasadas.push(actual); }
+    return pasadas;
+  }
+
+  // Busca, dentro de "horas" (mismos índices que sus puntos), el tramo
+  // CONTIGUO cuyo instante cae en [desde, hasta] (texto ISO, se compara
+  // igual que en aplicarSubTiempo). null si ninguno cae en el rango.
+  function rangoFechaEnArray(horas, desde, hasta) {
+    var primero = -1, ultimo = -1;
+    for (var i = 0; i < horas.length; i++) {
+      var t = horas[i];
+      if (t >= desde && t <= hasta) { if (primero < 0) { primero = i; } ultimo = i; }
+    }
+    return primero < 0 ? null : { desde: primero, hasta: ultimo };
   }
 
   function ajustarAResultados() {
@@ -1073,10 +1152,45 @@
       rutaSel.puntos = puntos;
       prepararSubfiltros(puntos);
       dibujarDetalle(puntos, rutaSel.color);
+      heredarFiltroPrimario();
     }).catch(function (e) {
       console.error(e);
       porId('aviso-sub').textContent = 'No se pudieron cargar los puntos de esta ruta.';
     });
+  }
+
+  // Si la ruta se abrió estando activo un filtro por fecha o por zona
+  // (primer filtrado), ESE MISMO filtro se aplica de una vez dentro de
+  // la ruta, con sus mismos valores: se resalta al instante el tramo
+  // correspondiente, sin obligar a repetir el filtrado ya hecho. Usa la
+  // resolución COMPLETA de la ruta (más precisa que el resaltado de la
+  // lista, que trabaja con puntos reducidos). El usuario sigue pudiendo
+  // quitarlo o cambiarlo a mano con los controles de siempre.
+  function heredarFiltroPrimario() {
+    if (tipoFiltro === 'fecha') {
+      var ini = porId('filtro-inicio').value, fin = porId('filtro-fin').value;
+      if (!ini && !fin) { return; }
+      subTipo = 'tiempo';
+      porId('sf-tiempo').classList.add('activo');
+      porId('sub-panel-tiempo').hidden = false;
+      porId('sub-inicio').value = ini;
+      porId('sub-fin').value = fin;
+      aplicarSubTiempo();
+    } else if (tipoFiltro === 'zona' && zonaP.centro) {
+      subTipo = 'zona';
+      porId('sf-zona').classList.add('activo');
+      porId('sub-panel-zona').hidden = false;
+      zonaS.centro = L.latLng(zonaP.centro.lat, zonaP.centro.lng);
+      zonaS.radio = zonaP.radio;
+      var opciones = estiloCirculo('sub');
+      opciones.radius = zonaS.radio;
+      zonaS.circulo = L.circle(zonaS.centro, opciones).addTo(capaSubZona);
+      porId('sub-radio').value = porId('radio-zona').value;
+      porId('sub-radio-texto').textContent = textoRadio(zonaS.radio);
+      porId('ayuda-sub-zona').textContent = 'Centro colocado. Ajusta el radio y presiona “Ver tramo en la zona”.';
+      porId('btn-aplicar-sub-zona').disabled = false;
+      aplicarSubZona();
+    }
   }
 
   function rellenarResumen(r, color) {
@@ -1272,19 +1386,15 @@
     if (lineaDetalle) { lineaDetalle.setStyle({ opacity: atenuar ? 0.3 : 0.95 }); }
   }
 
-  // Resalta en el mapa los puntos desde..hasta de la ruta: una línea más
-  // gruesa, con halo oscuro, y marcadores en los extremos. Devuelve sus límites.
+  // Resalta en el mapa los puntos desde..hasta de la ruta abierta (línea
+  // más gruesa con halo + marcadores en los extremos, vía
+  // dibujarTramoEnCapa) y atenúa el resto de la ruta. Devuelve los límites.
   function dibujarTramo(desdeIdx, hastaIdx) {
     var pts = rutaSel.puntos, coords = [];
     for (var i = desdeIdx; i <= hastaIdx; i++) { coords.push([pts[i].lat, pts[i].lon]); }
-    var base = { lineCap: 'round', lineJoin: 'round', interactive: false };
-    L.polyline(coords, Object.assign({ color: '#0B1F3A', weight: 16, opacity: 0.85 }, base)).addTo(capaSub);
-    L.polyline(coords, Object.assign({ color: rutaSel.color, weight: 8, opacity: 1 }, base)).addTo(capaSub);
+    var limites = dibujarTramoEnCapa(capaSub, coords, rutaSel.color);
     atenuarRuta(true);
-    var estilo = { radius: 7, color: '#0B1F3A', weight: 3, fillColor: '#E6E9EF', fillOpacity: 1, interactive: false };
-    L.circleMarker(coords[0], estilo).addTo(capaSub);
-    if (coords.length > 1) { L.circleMarker(coords[coords.length - 1], estilo).addTo(capaSub); }
-    return L.latLngBounds(coords);
+    return limites;
   }
 
   function mostrarResultadoSub(html, botones) {
