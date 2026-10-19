@@ -7,7 +7,7 @@
 
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700;800&display=swap" rel="stylesheet">
 
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
   integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
@@ -56,6 +56,12 @@
 
   .leaflet-container.armado,
   .leaflet-container.armado .leaflet-interactive { cursor: crosshair !important; }
+  /* Círculo de zona: "move" al pasar el mouse por encima, "grabbing" mientras se arrastra. */
+  .leaflet-container.sobre-zona { cursor: move !important; }
+  .leaflet-container.arrastrando-zona,
+  .leaflet-container.arrastrando-zona * { cursor: grabbing !important; }
+  /* Sin el retardo de ~300 ms de los toques ni el zoom por doble toque sobre botones y campos. */
+  button, input { touch-action: manipulation; }
 
   .icono-camion { font-size: 28px; text-align: center; line-height: 36px; }
 
@@ -233,25 +239,122 @@
   .menu-cuerpo::-webkit-scrollbar { width: 8px; }
   .menu-cuerpo::-webkit-scrollbar-thumb { background: rgba(167, 177, 190, 0.45); border-radius: 8px; }
 
+  /* Aviso corto sobre el mapa (resultado de mover una zona): se ve aunque el menú esté cerrado. */
+  .aviso-mapa {
+    position: fixed; top: 70px; left: 50%; z-index: 1300;
+    width: max-content; max-width: calc(100vw - 28px); padding: 9px 16px; border-radius: 999px;
+    background: var(--oscuro); color: var(--claro); box-shadow: var(--sombra);
+    font-size: 13px; font-weight: 700; text-align: center;
+    opacity: 0; transform: translate(-50%, -8px); pointer-events: none;
+    transition: opacity 0.2s ease, transform 0.2s ease;
+  }
+  .aviso-mapa.visible { opacity: 1; transform: translate(-50%, 0); }
+
   /* =====================================================================
-     CELULAR — el menú pasa a ser una hoja que sube desde abajo, para que
-     el mapa siga viéndose por encima.
+     SLIDER FLOTANTE
+     Cuando hay una ruta abierta, el slider vive FUERA del menú, pegado
+     abajo sobre el mapa: se puede cerrar el menú y seguir moviéndolo
+     viendo el mapa completo. (Dentro del menú no podría ser "fixed":
+     el menú tiene transform y arrastraría al slider con él.)
+     ===================================================================== */
+  :root { --alto-slider: 70px; }
+  .slider-flotante {
+    display: none;
+    position: fixed; z-index: 1160;
+    left: 14px; bottom: 14px; width: 520px; max-width: calc(100vw - 100px);
+    height: var(--alto-slider); padding: 9px 14px 8px;
+    background: var(--oscuro); color: var(--claro);
+    border-radius: 16px; box-shadow: var(--sombra);
+  }
+  body.modo-historicos.ruta-abierta .slider-flotante { display: block; }
+  /* Con el menú abierto en escritorio, el slider queda a la derecha de él. */
+  body.menu-abierto .slider-flotante { left: 388px; max-width: calc(100vw - 460px); }
+  .slider-fila { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
+  .slider-flotante label {
+    min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    font-size: 10.5px; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase; color: var(--gris-azul);
+  }
+  .slider-flotante .slider-etiqueta { flex: none; margin: 0; font-size: 14px; white-space: nowrap; font-variant-numeric: tabular-nums; }
+  .slider-flotante input[type=range] { display: block; width: 100%; height: 28px; margin: 4px 0 0; accent-color: var(--claro); }
+  /* Los controles de Leaflet (zoom, atribución) suben para no quedar tapados por el slider. */
+  @media (max-width: 1000px) {
+    body.modo-historicos.ruta-abierta #mapa-historico .leaflet-bottom { margin-bottom: calc(var(--alto-slider) + 14px); }
+  }
+
+  /* =====================================================================
+     CELULAR — pantalla limpia: el mapa es lo principal.
+       · El menú es una hoja que sube desde abajo (más baja y compacta).
+       · Las coordenadas en vivo son una tira pequeña de una sola fila.
+       · Con una ruta abierta, el slider flota abajo y la hoja se sube
+         por encima de él (así se puede cerrar la hoja y seguir usando
+         el slider con el mapa a la vista).
+       · Los campos de texto usan 16 px: con menos, iOS hace zoom al tocarlos.
      ===================================================================== */
   @media (max-width: 720px) {
-    .titulo-flotante { padding: 0 12px; gap: 8px; font-size: 12.5px; }
-    .ventana-datos { top: 70px; left: 14px; right: 14px; grid-template-columns: repeat(2, 1fr); }
-    .dato-flotante { min-width: 0; padding: 8px 14px; }
-    .dato-flotante:nth-child(3) { border-left: 0; }
-    .dato-flotante:nth-child(n+3) { border-top: 1px solid rgba(167, 177, 190, 0.75); }
+    :root { --alto-slider: 66px; }
+
+    .barra-superior { top: calc(10px + env(safe-area-inset-top, 0px)); left: 10px; gap: 8px; }
+    .boton-menu { width: 42px; height: 42px; border-radius: 12px; }
+    .titulo-flotante { height: 42px; padding: 0 12px; gap: 8px; border-radius: 12px; font-size: 12px; }
+
+    .ventana-datos {
+      top: calc(60px + env(safe-area-inset-top, 0px)); left: 10px; right: auto;
+      grid-template-columns: repeat(4, auto); border-radius: 12px;
+    }
+    .dato-flotante { min-width: 0; padding: 5px 9px; }
+    .dato-etiqueta { font-size: 8.5px; letter-spacing: 0.08em; }
+    .dato-valor { margin-top: 1px; font-size: 11.5px; letter-spacing: 0; font-variant-numeric: tabular-nums; }
+
     .menu-lateral {
-      top: auto; left: 10px; right: 10px; bottom: 10px; width: auto; max-width: none;
-      max-height: 64vh; max-height: 64dvh;
+      top: auto; left: 8px; right: 8px; bottom: calc(8px + env(safe-area-inset-bottom, 0px));
+      width: auto; max-width: none; border-radius: 18px;
+      max-height: 52vh; max-height: 52dvh;
       transform: translateY(calc(100% + 30px));
     }
-    .boton-centrar { bottom: 108px; }
+    body.modo-historicos.ruta-abierta .menu-lateral {
+      bottom: calc(var(--alto-slider) + 16px + env(safe-area-inset-bottom, 0px));
+      max-height: 42vh; max-height: 42dvh;
+    }
+    .menu-cabecera { padding: 10px 12px 0 16px; }
+    .menu-cuerpo { padding: 4px 12px 12px; }
+    .selector-modo, .tipo-filtro { gap: 6px; margin-bottom: 8px; }
+    .modo, .tipo-btn { padding: 9px 6px; font-size: 12.5px; }
+    .panel { padding: 10px 12px; margin-bottom: 8px; }
+    .panel input[type=datetime-local] { font-size: 16px; padding: 7px 10px; }
+    .ayuda { margin-bottom: 6px; font-size: 12px; }
+    .fila-botones { margin-top: 8px; }
+    .btn { min-height: 40px; padding: 8px; }
+    .cabecera-resultados { margin: 10px 2px 6px; }
+    .lista-recorridos { gap: 7px; }
+    .tarjeta-recorrido { padding: 8px 12px; border-radius: 12px; }
+    .tarjeta-detalle { margin-bottom: 8px; }
+    .volver { padding: 2px 0 8px; }
+    .sub-titulo { margin: 12px 2px 6px; }
+    .punto-info { padding: 8px 12px; margin-bottom: 8px; font-size: 12.5px; line-height: 1.5; }
+    .resultado-sub { margin-top: 8px; padding: 10px 12px; font-size: 12.5px; }
+
+    .slider-flotante,
+    body.menu-abierto .slider-flotante {
+      left: 8px; right: 8px; width: auto; max-width: none;
+      bottom: calc(8px + env(safe-area-inset-bottom, 0px));
+    }
+    .aviso-mapa { top: calc(60px + env(safe-area-inset-top, 0px)); }
+
+    /* Menos elementos sobre el mapa: el zoom se hace con los dedos. */
+    .leaflet-control-zoom { display: none; }
+    .leaflet-control-attribution { font-size: 9px; }
+    .boton-centrar { right: 12px; bottom: calc(24px + env(safe-area-inset-bottom, 0px)); width: 44px; height: 44px; }
+    body.menu-abierto .boton-centrar { display: none; }
   }
   @media (max-width: 380px) {
     .titulo-flotante { font-size: 11.5px; letter-spacing: 0.04em; padding: 0 10px; }
+    .dato-flotante { padding: 5px 7px; }
+    .dato-valor { font-size: 10.5px; }
+  }
+  @media (max-width: 340px) {
+    .ventana-datos { right: 10px; }
+    .dato-flotante { padding: 4px 4px; }
+    .dato-valor { font-size: 9.5px; }
   }
 </style>
 </head>
@@ -288,6 +391,18 @@
     <path d="M12 2.5v3.4M12 18.1v3.4M2.5 12h3.4M18.1 12h3.4"/>
   </svg>
 </button>
+
+<!-- ============ Slider flotante (solo con una ruta abierta en Históricos) ============ -->
+<div class="slider-flotante" id="slider-flotante">
+  <div class="slider-fila">
+    <label for="slider-momento" id="etq-slider">Momento del recorrido</label>
+    <span class="slider-etiqueta" id="slider-etiqueta">—</span>
+  </div>
+  <input type="range" id="slider-momento" min="0" max="0" value="0" oninput="moverSlider(this.value)">
+</div>
+
+<!-- Aviso breve sobre el mapa (resultado de mover una zona) -->
+<div class="aviso-mapa" id="aviso-mapa" role="status" aria-live="polite"></div>
 
 <!-- ============ Menú lateral ============ -->
 <aside class="menu-lateral" id="menu-lateral" aria-hidden="true">
@@ -326,20 +441,16 @@
         </div>
 
         <div class="panel" id="panel-zona" hidden>
-          <p class="ayuda" id="ayuda-zona">Toca el mapa para colocar el centro de la zona.</p>
+          <p class="ayuda" id="ayuda-zona">Toca el mapa para colocar la zona.</p>
           <label for="radio-zona">Radio: <span id="radio-texto">500 m</span></label>
           <input type="range" id="radio-zona" min="0" max="100" value="27" oninput="cambiarRadio(this.value, 'principal')">
           <div class="fila-botones">
-            <button class="btn btn-secundario" onclick="armarCentro('principal')">Mover centro</button>
             <button class="btn btn-secundario" onclick="limpiarFiltros()">Limpiar</button>
-          </div>
-          <div class="fila-botones">
-            <button class="btn btn-principal" id="btn-buscar-zona" onclick="aplicarFiltroZona()" disabled>Buscar en esta zona</button>
           </div>
         </div>
 
         <div class="cabecera-resultados">
-          <span class="etiqueta-resultados" id="etiqueta-resultados">Últimas rutas</span>
+          <span class="etiqueta-resultados" id="etiqueta-resultados">Últimas 4 rutas</span>
           <button class="accion-lista" id="accion-lista" onclick="restaurarLista()" hidden>Ver todas</button>
         </div>
         <div class="lista-recorridos" id="lista-recorridos"></div>
@@ -353,12 +464,6 @@
         <div class="tarjeta-recorrido tarjeta-detalle" id="detalle-tarjeta">
           <div class="tarjeta-linea"><span class="tarjeta-etq"><i class="punto-color" style="background:#0F766E"></i>Desde</span><span class="tarjeta-val" id="detalle-desde">—</span></div>
           <div class="tarjeta-linea"><span class="tarjeta-etq"><i class="punto-color" style="background:#C2410C"></i>Hasta</span><span class="tarjeta-val" id="detalle-hasta">—</span></div>
-        </div>
-
-        <div class="panel">
-          <label for="slider-momento" id="etq-slider">Momento del recorrido</label>
-          <input type="range" id="slider-momento" min="0" max="0" value="0" oninput="moverSlider(this.value)">
-          <div class="slider-etiqueta" id="slider-etiqueta">—</div>
         </div>
 
         <div class="punto-info" id="punto-info" hidden>
@@ -385,15 +490,11 @@
         </div>
 
         <div class="panel" id="sub-panel-zona" hidden>
-          <p class="ayuda" id="ayuda-sub-zona">Toca el mapa para colocar el centro de la zona.</p>
+          <p class="ayuda" id="ayuda-sub-zona">Toca el mapa para colocar la zona.</p>
           <label for="sub-radio">Radio: <span id="sub-radio-texto">500 m</span></label>
           <input type="range" id="sub-radio" min="0" max="100" value="27" oninput="cambiarRadio(this.value, 'sub')">
           <div class="fila-botones">
-            <button class="btn btn-secundario" onclick="armarCentro('sub')">Mover centro</button>
             <button class="btn btn-secundario" onclick="limpiarResultadosSub(true)">Quitar</button>
-          </div>
-          <div class="fila-botones">
-            <button class="btn btn-principal" id="btn-aplicar-sub-zona" onclick="aplicarSubZona()" disabled>Ver tramo en la zona</button>
           </div>
         </div>
 
@@ -411,6 +512,17 @@
   // =====================================================================
 
   function porId(id) { return document.getElementById(id); }
+
+  // Aviso corto sobre el mapa (se apaga solo). Sirve para dar el resultado
+  // de mover una zona aunque el menú esté cerrado, como pasa en celular.
+  var temporizadorAviso = null;
+  function mostrarAvisoMapa(texto) {
+    var caja = porId('aviso-mapa');
+    caja.textContent = texto;
+    caja.classList.add('visible');
+    clearTimeout(temporizadorAviso);
+    temporizadorAviso = setTimeout(function () { caja.classList.remove('visible'); }, 2800);
+  }
 
   // Pide un JSON al servidor; si responde con error, lo convierte en una
   // excepción para poder mostrar un mensaje en vez de quedarse "cargando".
@@ -628,12 +740,20 @@
   }
 
   // Actualización cada 5 segundos — solo mientras se está viendo Tiempo Real.
+  // (Con la pestaña oculta, o el celular bloqueado, no se consulta nada:
+  // ahorra batería y datos. Al volver se actualiza de inmediato.)
   setInterval(function () {
-    if (modoActual === 'tiempo-real') {
+    if (modoActual === 'tiempo-real' && !document.hidden) {
       actualizarValores();
       actualizarRecorrido();
     }
   }, 5000);
+  document.addEventListener('visibilitychange', function () {
+    if (!document.hidden && modoActual === 'tiempo-real') {
+      actualizarValores();
+      actualizarRecorrido();
+    }
+  });
 
   actualizarValores();
   actualizarRecorrido();
@@ -659,7 +779,8 @@
 
   var tokenBusqueda = 0;          // evita que una respuesta lenta pise a una más nueva
   var rutasActuales = [];         // resúmenes de las rutas que se están mostrando
-  var etiquetaBase = 'Últimas rutas', vacioBase = '';
+  var ETIQUETA_ULTIMAS = 'Últimas 4 rutas';      // rótulo de la primera vista de Históricos
+  var etiquetaBase = ETIQUETA_ULTIMAS, vacioBase = '';
   var subconjuntoActivo = false;  // ¿la lista muestra solo las rutas de un trayecto coincidente?
   var colorPorId = {}, puntosPorId = {}, horasPorId = {}, lineasPorId = {};
 
@@ -669,7 +790,9 @@
   // Zonas (círculos): una para el primer filtrado y otra para el filtrado dentro de la ruta.
   var zonaP = { centro: null, radio: 500, circulo: null };
   var zonaS = { centro: null, radio: 500, circulo: null };
-  var armado = null;              // null | 'principal' | 'sub' — el próximo clic en el mapa coloca el centro
+  var armado = null;              // null | 'principal' | 'sub' — el próximo clic en el mapa coloca la zona (solo la primera vez)
+  var AYUDA_COLOCAR = 'Toca el mapa para colocar la zona.';
+  var AYUDA_MOVER = 'Mantén presionado el círculo y arrástralo para moverlo. Al soltarlo se muestran los tramos.';
 
   function inicializarHistoricos() {
     mapaHistorico = L.map('mapa-historico', { zoomControl: false, preferCanvas: true }).setView([4.5, -74.3], 6);
@@ -687,6 +810,7 @@
     capaSubZona = L.layerGroup().addTo(mapaHistorico);
 
     mapaHistorico.on('click', alClicMapaHistorico);
+    configurarArrastreDeZonas();
 
     cambiarRadio(porId('radio-zona').value, 'principal');
     cambiarRadio(porId('sub-radio').value, 'sub');
@@ -713,10 +837,16 @@
   // Deja espacio en el mapa para el menú cuando se ajusta la vista a una ruta.
   function opcionesAjuste() {
     var abierto = document.body.classList.contains('menu-abierto');
+    var conSlider = document.body.classList.contains('ruta-abierta');   // el slider flotante tapa la parte baja
     var w = window.innerWidth, h = window.innerHeight;
-    if (!abierto) { return { padding: [70, 70], maxZoom: 17 }; }
-    if (w <= 720) { return { paddingTopLeft: [30, 80], paddingBottomRight: [30, Math.round(h * 0.64) + 20], maxZoom: 17 }; }
-    return { paddingTopLeft: [400, 80], paddingBottomRight: [50, 50], maxZoom: 17 };
+    if (!abierto) { return { paddingTopLeft: [70, 70], paddingBottomRight: [70, conSlider ? 100 : 70], maxZoom: 17 }; }
+    if (w <= 720) {
+      // La hoja inferior tapa tanto como mida ahora (más lo que la separa del borde).
+      var menu = porId('menu-lateral');
+      var tapado = menu.offsetHeight + (parseFloat(getComputedStyle(menu).bottom) || 0) + 16;
+      return { paddingTopLeft: [30, 70], paddingBottomRight: [30, Math.min(tapado, Math.round(h * 0.7))], maxZoom: 17 };
+    }
+    return { paddingTopLeft: [400, 80], paddingBottomRight: [50, conSlider ? 100 : 50], maxZoom: 17 };
   }
 
   function unirBounds(lista) {
@@ -734,7 +864,7 @@
   // =====================================================================
 
   function mostrarUltimasRutas() {
-    cargarResultados('/recorridos?limite=4', 'Últimas rutas', 'Todavía no hay rutas registradas.');
+    cargarResultados('/recorridos?limite=4', ETIQUETA_ULTIMAS, 'Todavía no hay rutas registradas.');
   }
 
   // El botón "Ver todas las rutas registradas" / "Mostrar solo las
@@ -754,7 +884,7 @@
   // se oculta.
   function actualizarBotonVerTodas(etiqueta) {
     var btn = porId('btn-ver-todas');
-    if (etiqueta === 'Últimas rutas') {
+    if (etiqueta === ETIQUETA_ULTIMAS) {
       btn.hidden = false;
       btn.textContent = 'Ver todas las rutas registradas';
     } else if (etiqueta === 'Todas las rutas registradas') {
@@ -767,7 +897,23 @@
 
   // Pide una lista de rutas al servidor, la muestra como tarjetas y
   // dibuja TODAS en el mapa, cada una de un color.
-  function cargarResultados(url, etiqueta, mensajeVacio) {
+  //
+  // "opciones" (todas opcionales) es lo que usa el filtro por zona, que se
+  // vuelve a ejecutar cada vez que se suelta el círculo:
+  //   suave:   no borra lo dibujado ni pone "Cargando…" hasta tener lo nuevo
+  //            (así el mapa no parpadea al mover el círculo)
+  //   ajustar: false = no mover la vista del mapa (el usuario está mirando la zona)
+  //   avisar:  muestra el resultado en el aviso flotante sobre el mapa
+  function limpiarDibujoResultados() {
+    capaRutas.clearLayers();
+    capaTramosResultado.clearLayers();
+    lineasPorId = {};
+    puntosPorId = {};
+    horasPorId = {};
+  }
+
+  function cargarResultados(url, etiqueta, mensajeVacio, opciones) {
+    opciones = opciones || {};
     var token = ++tokenBusqueda;
     etiquetaBase = etiqueta;
     vacioBase = mensajeVacio;
@@ -775,12 +921,10 @@
     porId('etiqueta-resultados').textContent = etiqueta;
     porId('accion-lista').hidden = true;
     actualizarBotonVerTodas(etiqueta);
-    capaRutas.clearLayers();
-    capaTramosResultado.clearLayers();
-    lineasPorId = {};
-    puntosPorId = {};
-    horasPorId = {};
-    porId('lista-recorridos').innerHTML = '<div class="lista-vacia">Cargando…</div>';
+    if (!opciones.suave) {
+      limpiarDibujoResultados();
+      porId('lista-recorridos').innerHTML = '<div class="lista-vacia">Cargando…</div>';
+    }
 
     pedirJSON(url).then(function (lista) {
       if (token !== tokenBusqueda) { return; }
@@ -788,7 +932,11 @@
       colorPorId = {};
       lista.forEach(function (r, i) { colorPorId[r.id_recorrido] = COLORES_RUTA[i % COLORES_RUTA.length]; });
       renderizarTarjetas(lista, mensajeVacio);
-      dibujarRutasEnMapa(lista, token);
+      dibujarRutasEnMapa(lista, token, opciones);
+      if (opciones.avisar) {
+        mostrarAvisoMapa(lista.length === 0 ? mensajeVacio
+          : (lista.length === 1 ? '1 ruta pasa por esta zona' : lista.length + ' rutas pasan por esta zona'));
+      }
       // En celular el menú es corto: si los resultados quedaron más abajo
       // de lo visible, se baja hasta la primera tarjeta.
       var primera = porId('lista-recorridos').firstElementChild;
@@ -831,8 +979,13 @@
 
   // Trae la geometría de todas las rutas de la lista en UNA sola
   // petición y las dibuja, cada una de su color.
-  function dibujarRutasEnMapa(lista, token) {
-    if (lista.length === 0) { ajustarAResultados(); return; }
+  function dibujarRutasEnMapa(lista, token, opciones) {
+    opciones = opciones || {};
+    if (lista.length === 0) {
+      if (opciones.suave) { limpiarDibujoResultados(); }
+      if (opciones.ajustar !== false) { ajustarAResultados(); }
+      return;
+    }
     var ids = lista.map(function (r) { return r.id_recorrido; });
     var maxPuntos = Math.max.apply(null, lista.map(function (r) { return r.num_puntos; }));
     // Para una vista general no hace falta cada punto: ~300 por ruta basta.
@@ -840,6 +993,7 @@
 
     pedirJSON('/puntos_recorridos?ids=' + encodeURIComponent(ids.join(',')) + '&paso=' + paso).then(function (porRuta) {
       if (token !== tokenBusqueda) { return; }
+      if (opciones.suave) { limpiarDibujoResultados(); }      // recién ahora: sin parpadeo
       lista.forEach(function (r) {
         var datos = porRuta[r.id_recorrido];
         if (!datos || !datos.pts || datos.pts.length === 0) { return; }
@@ -850,7 +1004,7 @@
           interactive: false        // los clics los atiende el mapa (ver alClicMapaHistorico)
         }).addTo(capaRutas);
       });
-      ajustarAResultados();
+      if (opciones.ajustar !== false) { ajustarAResultados(); }
       resaltarTramosDelFiltro();
     }).catch(function (e) { console.error(e); });
   }
@@ -989,23 +1143,27 @@
 
   // ---- Filtro por zona ----
 
+  // Ya no hay botón "Buscar": se ejecuta sola al colocar el círculo, al
+  // soltarlo después de arrastrarlo y al cambiar el radio (ver
+  // ejecutarBusquedaZona). Sin mover la vista del mapa.
   function aplicarFiltroZona() {
     if (!zonaP.centro) { return; }
     var url = '/recorridos_zona?lat=' + zonaP.centro.lat + '&lon=' + zonaP.centro.lng +
               '&radio=' + zonaP.radio + '&limite=30';
-    cargarResultados(url, 'Rutas por el área', 'No hay rutas en este área seleccionada.');
+    cargarResultados(url, 'Rutas por el área', 'No hay rutas en este área seleccionada.',
+                     { suave: true, ajustar: false, avisar: true });
   }
 
   // "Limpiar" (y cambiar de tipo de filtro): vuelve a las últimas 4 rutas.
   function limpiarFiltros() {
+    cancelarBusquedasZona();
     porId('filtro-inicio').value = '';
     porId('filtro-fin').value = '';
     porId('aviso-fecha').textContent = '';
     capaZona.clearLayers();
     zonaP.centro = null;
     zonaP.circulo = null;
-    porId('btn-buscar-zona').disabled = true;
-    porId('ayuda-zona').textContent = 'Toca el mapa para colocar el centro de la zona.';
+    porId('ayuda-zona').textContent = AYUDA_COLOCAR;
     mostrarUltimasRutas();
     if (tipoFiltro === 'zona') { armarCentro('principal'); }
   }
@@ -1014,17 +1172,20 @@
   // 6. HISTÓRICOS — círculos (zonas)
   // =====================================================================
 
+  // interactive:false = el círculo no captura clics (las rutas de debajo siguen
+  // respondiendo). Moverlo lo hace configurarArrastreDeZonas, no Leaflet.
   function estiloCirculo(ambito) {
     return ambito === 'principal'
-      ? { color: '#0B1F3A', weight: 3, dashArray: '8 6', fillColor: '#0B1F3A', fillOpacity: 0.12 }
-      : { color: '#0B1F3A', weight: 3, fillColor: '#E6E9EF', fillOpacity: 0.3 };
+      ? { color: '#0B1F3A', weight: 3, dashArray: '8 6', fillColor: '#0B1F3A', fillOpacity: 0.12, interactive: false }
+      : { color: '#0B1F3A', weight: 3, fillColor: '#E6E9EF', fillOpacity: 0.3, interactive: false };
   }
 
-  // Después de "armar", el PRÓXIMO clic en el mapa coloca el centro.
+  // "Armar" = esperar el PRÓXIMO clic en el mapa para colocar la zona. Solo
+  // pasa cuando todavía no hay círculo; una vez colocado, se mueve arrastrándolo.
   function armarCentro(ambito) {
     armado = ambito;
     mapaHistorico.getContainer().classList.add('armado');
-    porId(ambito === 'principal' ? 'ayuda-zona' : 'ayuda-sub-zona').textContent = 'Toca el mapa para colocar el centro de la zona.';
+    porId(ambito === 'principal' ? 'ayuda-zona' : 'ayuda-sub-zona').textContent = AYUDA_COLOCAR;
   }
   function desarmar() {
     armado = null;
@@ -1033,21 +1194,21 @@
   function cancelarArmado() { desarmar(); }
 
   function colocarCentro(latlng) {
-    var principal = (armado === 'principal');
+    var ambito = armado;
+    var principal = (ambito === 'principal');
     var z = principal ? zonaP : zonaS;
     var capa = principal ? capaZona : capaSubZona;
     z.centro = latlng;
     if (!z.circulo) {
-      var opciones = estiloCirculo(armado);
+      var opciones = estiloCirculo(ambito);
       opciones.radius = z.radio;
       z.circulo = L.circle(latlng, opciones).addTo(capa);
     } else {
       z.circulo.setLatLng(latlng);
     }
-    porId(principal ? 'ayuda-zona' : 'ayuda-sub-zona').textContent =
-      'Centro colocado. Ajusta el radio' + (principal ? ' y presiona “Buscar en esta zona”.' : ' y presiona “Ver tramo en la zona”.');
-    porId(principal ? 'btn-buscar-zona' : 'btn-aplicar-sub-zona').disabled = false;
+    porId(principal ? 'ayuda-zona' : 'ayuda-sub-zona').textContent = AYUDA_MOVER;
     desarmar();
+    ejecutarBusquedaZona(ambito);          // se filtra de una vez, sin botón
   }
 
   function cambiarRadio(valor, ambito) {
@@ -1055,7 +1216,136 @@
     var z = (ambito === 'principal') ? zonaP : zonaS;
     z.radio = m;
     porId(ambito === 'principal' ? 'radio-texto' : 'sub-radio-texto').textContent = textoRadio(m);
-    if (z.circulo) { z.circulo.setRadius(m); }
+    if (z.circulo) {
+      z.circulo.setRadius(m);
+      programarBusquedaZona(ambito);       // el círculo cambia al instante; el filtro, al dejar de mover la barra
+    }
+  }
+
+  // ---- Filtrar solo al colocar / mover / cambiar el radio de la zona ----
+
+  var temporizadorZona = { principal: null, sub: null };
+
+  function programarBusquedaZona(ambito) {
+    clearTimeout(temporizadorZona[ambito]);
+    temporizadorZona[ambito] = setTimeout(function () { ejecutarBusquedaZona(ambito); }, 300);
+  }
+  function cancelarBusquedasZona() {
+    clearTimeout(temporizadorZona.principal);
+    clearTimeout(temporizadorZona.sub);
+  }
+
+  // Un solo punto de entrada. Las comprobaciones evitan que un temporizador
+  // viejo busque cuando ya se cambió de vista, de filtro o se quitó la zona.
+  function ejecutarBusquedaZona(ambito) {
+    clearTimeout(temporizadorZona[ambito]);
+    if (ambito === 'principal') {
+      if (vistaActual !== 'lista' || tipoFiltro !== 'zona' || !zonaP.centro) { return; }
+      aplicarFiltroZona();
+    } else {
+      if (vistaActual !== 'detalle' || subTipo !== 'zona' || !zonaS.centro) { return; }
+      aplicarSubZona({ ajustar: false, avisar: true });
+    }
+  }
+
+  // ---- Mover el círculo: clic (o dedo) sostenido sobre él y arrastrar ----
+  // Se hace con eventos "pointer" directamente sobre el contenedor del mapa
+  // (valen para mouse, dedo y lápiz). Al presionar DENTRO del círculo se
+  // apaga el arrastre del mapa para que se mueva el círculo y no el mapa;
+  // al soltar se vuelve a encender y se ejecuta el filtro. Presionar fuera
+  // del círculo mueve el mapa como siempre.
+
+  var arrastre = null;        // { ambito, zona, id, x0, y0, inicio, centroInicial, movido } mientras se arrastra
+  var ultimoArrastre = 0;     // cuándo terminó el último arrastre real: se ignora el clic que el navegador dispara después
+
+  function zonaMovibleAhora() {
+    if (armado) { return null; }
+    if (vistaActual === 'lista' && tipoFiltro === 'zona' && zonaP.circulo) { return { ambito: 'principal', zona: zonaP }; }
+    if (vistaActual === 'detalle' && subTipo === 'zona' && zonaS.circulo) { return { ambito: 'sub', zona: zonaS }; }
+    return null;
+  }
+
+  // ¿El puntero está sobre el círculo? Si el círculo se ve muy pequeño se
+  // da un mínimo de 22 px para poder agarrarlo con el dedo.
+  function punteroSobreZona(e, zona) {
+    var metrosPorPx = 156543.03392 * Math.cos(zona.centro.lat * Math.PI / 180) / Math.pow(2, mapaHistorico.getZoom());
+    var radioPx = Math.max(zona.radio / metrosPorPx, 22);
+    var centro = mapaHistorico.latLngToContainerPoint(zona.centro);
+    return centro.distanceTo(mapaHistorico.mouseEventToContainerPoint(e)) <= radioPx;
+  }
+
+  function configurarArrastreDeZonas() {
+    var contenedor = mapaHistorico.getContainer();
+    contenedor.addEventListener('pointerdown', alPresionarMapa, true);
+    contenedor.addEventListener('pointermove', alPasarPunteroPorMapa);
+    contenedor.addEventListener('pointerleave', function () { contenedor.classList.remove('sobre-zona'); });
+  }
+
+  function alPresionarMapa(e) {
+    if (arrastre) {                                   // un segundo dedo (zoom con dos dedos): se suelta el círculo
+      if (e.pointerId !== arrastre.id) { terminarArrastre(); }
+      return;
+    }
+    if (!e.isPrimary || (e.pointerType === 'mouse' && e.button !== 0)) { return; }
+    if (e.target.closest && e.target.closest('.leaflet-control')) { return; }
+    var info = zonaMovibleAhora();
+    if (!info || !punteroSobreZona(e, info.zona)) { return; }
+
+    arrastre = {
+      ambito: info.ambito, zona: info.zona, id: e.pointerId,
+      x0: e.clientX, y0: e.clientY, movido: false,
+      inicio: mapaHistorico.mouseEventToLayerPoint(e),
+      centroInicial: mapaHistorico.latLngToLayerPoint(info.zona.centro)
+    };
+    mapaHistorico.dragging.disable();                 // desde ahora el mapa no se mueve con este gesto
+    mapaHistorico.getContainer().classList.remove('sobre-zona');
+    mapaHistorico.getContainer().classList.add('arrastrando-zona');
+    window.addEventListener('pointermove', alMoverPuntero);
+    window.addEventListener('pointerup', alSoltarPuntero);
+    window.addEventListener('pointercancel', alSoltarPuntero);
+    window.addEventListener('blur', terminarArrastre);     // seguro: si la ventana pierde el foco a mitad de arrastre, se suelta
+  }
+
+  function alMoverPuntero(e) {
+    if (!arrastre || e.pointerId !== arrastre.id) { return; }
+    // Seguro: si el botón del mouse ya se soltó (p. ej. fuera de la ventana) y no llegó el "pointerup",
+    // se termina aquí; si no, el mapa se quedaría sin poder arrastrarse.
+    if (e.pointerType === 'mouse' && e.buttons === 0) { terminarArrastre(); return; }
+    // Un toque casi quieto no cuenta como arrastre (así un clic normal sigue siendo un clic).
+    if (!arrastre.movido && Math.abs(e.clientX - arrastre.x0) + Math.abs(e.clientY - arrastre.y0) < 5) { return; }
+    arrastre.movido = true;
+    // El círculo se desplaza lo mismo que el puntero desde donde se agarró (no salta a centrarse en el dedo).
+    var actual = mapaHistorico.mouseEventToLayerPoint(e);
+    var nuevo = mapaHistorico.layerPointToLatLng(arrastre.centroInicial.add(actual.subtract(arrastre.inicio)));
+    arrastre.zona.centro = nuevo;
+    arrastre.zona.circulo.setLatLng(nuevo);
+  }
+
+  function alSoltarPuntero(e) {
+    if (arrastre && e.pointerId === arrastre.id) { terminarArrastre(); }
+  }
+
+  function terminarArrastre() {
+    var a = arrastre;
+    if (!a) { return; }
+    arrastre = null;
+    window.removeEventListener('pointermove', alMoverPuntero);
+    window.removeEventListener('pointerup', alSoltarPuntero);
+    window.removeEventListener('pointercancel', alSoltarPuntero);
+    window.removeEventListener('blur', terminarArrastre);
+    mapaHistorico.dragging.enable();
+    mapaHistorico.getContainer().classList.remove('arrastrando-zona');
+    if (a.movido) {
+      ultimoArrastre = Date.now();
+      ejecutarBusquedaZona(a.ambito);                 // soltó el círculo: se muestran los tramos
+    }
+  }
+
+  // Con el mouse: cursor de "mover" al pasar por encima del círculo.
+  function alPasarPunteroPorMapa(e) {
+    if (arrastre || e.pointerType !== 'mouse') { return; }
+    var info = zonaMovibleAhora();
+    mapaHistorico.getContainer().classList.toggle('sobre-zona', !!(info && punteroSobreZona(e, info.zona)));
   }
 
   // =====================================================================
@@ -1063,6 +1353,7 @@
   // =====================================================================
 
   function alClicMapaHistorico(e) {
+    if (Date.now() - ultimoArrastre < 350) { return; }     // es el clic que sigue a soltar el círculo
     if (armado) { colocarCentro(e.latlng); return; }
     if (vistaActual !== 'lista') { return; }     // en el detalle solo responde la línea de la ruta
 
@@ -1136,7 +1427,9 @@
 
     rutaSel = { resumen: resumen, puntos: null, color: colorPorId[id] || '#5B21B6' };
     desarmar();
+    cancelarBusquedasZona();
     vistaActual = 'detalle';
+    document.body.classList.add('ruta-abierta');       // muestra el slider flotante
     porId('vista-lista').hidden = true;
     porId('vista-detalle').hidden = false;
     porId('menu-cuerpo').scrollTop = 0;
@@ -1152,6 +1445,8 @@
     rellenarResumen(resumen, rutaSel.color);
     porId('punto-info').hidden = true;
     porId('slider-etiqueta').textContent = '—';
+    porId('slider-momento').max = 0;
+    porId('slider-momento').value = 0;
     alternarMenu(true);
 
     pedirJSON('/puntos_recorrido?id=' + encodeURIComponent(id)).then(function (puntos) {
@@ -1194,8 +1489,7 @@
       zonaS.circulo = L.circle(zonaS.centro, opciones).addTo(capaSubZona);
       porId('sub-radio').value = porId('radio-zona').value;
       porId('sub-radio-texto').textContent = textoRadio(zonaS.radio);
-      porId('ayuda-sub-zona').textContent = 'Centro colocado. Ajusta el radio y presiona “Ver tramo en la zona”.';
-      porId('btn-aplicar-sub-zona').disabled = false;
+      porId('ayuda-sub-zona').textContent = AYUDA_MOVER;
       aplicarSubZona();
     }
   }
@@ -1215,7 +1509,7 @@
     // Clic sobre la línea: se toma el punto GPS más cercano al clic y se
     // muestran sus datos exactos (el slider salta a ese punto).
     lineaDetalle.on('click', function (e) {
-      if (armado) { return; }
+      if (armado || Date.now() - ultimoArrastre < 350) { return; }
       moverSliderAIndiceReal(indiceMasCercano(e.latlng));
     });
 
@@ -1265,7 +1559,7 @@
     slider.min = 0;
     slider.max = total - 1;
     slider.value = pos;
-    porId('etq-slider').textContent = indices ? 'Momento del tramo seleccionado' : 'Momento del recorrido';
+    porId('etq-slider').textContent = indices ? 'Momento del tramo' : 'Momento del recorrido';
     moverSlider(pos);
   }
 
@@ -1316,6 +1610,8 @@
 
   function volverALista() {
     vistaActual = 'lista';
+    cancelarBusquedasZona();
+    document.body.classList.remove('ruta-abierta');    // oculta el slider flotante
     porId('vista-detalle').hidden = true;
     porId('vista-lista').hidden = false;
     porId('menu-cuerpo').scrollTop = 0;
@@ -1383,8 +1679,8 @@
       if (capaSubZona) { capaSubZona.clearLayers(); }
       zonaS.centro = null;
       zonaS.circulo = null;
-      porId('btn-aplicar-sub-zona').disabled = true;
-      porId('ayuda-sub-zona').textContent = 'Toca el mapa para colocar el centro de la zona.';
+      clearTimeout(temporizadorZona.sub);
+      porId('ayuda-sub-zona').textContent = AYUDA_COLOCAR;
       if (subTipo === 'zona' && vistaActual === 'detalle') { armarCentro('sub'); }
     }
     reordenarDetalle();
@@ -1469,14 +1765,21 @@
   }
 
   // ---- Por zona ----
-  function aplicarSubZona() {
+  // Se ejecuta sola al colocar, mover o cambiar el radio del círculo.
+  // opciones (opcionales): ajustar:false = no mover la vista; avisar = aviso flotante.
+  function aplicarSubZona(opciones) {
+    opciones = opciones || {};
     if (!rutaSel || !rutaSel.puntos) { return; }
     limpiarResultadosSub(false);
-    if (!zonaS.centro) { avisoSub('Primero toca el mapa para colocar el centro de la zona.'); return; }
+    if (!zonaS.centro) { avisoSub(AYUDA_COLOCAR); return; }
 
     var pts = rutaSel.puntos;
     var pasadas = calcularPasadas(pts, zonaS.centro.lat, zonaS.centro.lng, zonaS.radio);
-    if (pasadas.length === 0) { mostrarResultadoSub('Esta ruta no pasa por la zona seleccionada.'); return; }
+    if (pasadas.length === 0) {
+      mostrarResultadoSub('Esta ruta no pasa por la zona seleccionada.');
+      if (opciones.avisar) { mostrarAvisoMapa('Esta ruta no pasa por la zona'); }
+      return;
+    }
 
     var limites = [];
     var botones = pasadas.map(function (ps, k) {
@@ -1497,7 +1800,10 @@
     var enZona = [];
     pasadas.forEach(function (ps) { enZona = enZona.concat(rangoIndices(ps.desde, ps.hasta)); });
     configurarSlider(enZona);
-    mapaHistorico.fitBounds(unirBounds(limites.concat([zonaS.circulo.getBounds()])), opcionesAjuste());
+    if (opciones.ajustar !== false) {
+      mapaHistorico.fitBounds(unirBounds(limites.concat([zonaS.circulo.getBounds()])), opcionesAjuste());
+    }
+    if (opciones.avisar) { mostrarAvisoMapa(pasadas.length === 1 ? '1 pasada por la zona' : pasadas.length + ' pasadas por la zona'); }
     mostrarResultadoSub('<b>' + (pasadas.length === 1 ? 'Tramo dentro de la zona' : pasadas.length + ' pasadas por la zona') + '</b>', botones);
   }
 </script>
