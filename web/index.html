@@ -56,6 +56,11 @@
   body.modo-historicos #mapa { visibility: hidden; }
   body.modo-historicos #mapa-historico { visibility: visible; }
 
+  /* Mapa de fondo sobrio: casi sin color (grises suaves) para que lo que
+     tiene color —las rutas— sea lo que destaque. Solo afecta a las teselas,
+     no a las líneas ni a los marcadores. */
+  .leaflet-tile-pane { filter: grayscale(0.85) contrast(0.92) brightness(1.04); }
+
   .leaflet-container.armado,
   .leaflet-container.armado .leaflet-interactive { cursor: crosshair !important; }
   /* Círculo de zona: "move" al pasar el mouse por encima, "grabbing" mientras se arrastra. */
@@ -66,6 +71,9 @@
   button, input { touch-action: manipulation; }
 
   .icono-camion { font-size: 28px; text-align: center; line-height: 36px; }
+  /* Flechitas de dirección sobre la línea del recorrido en vivo. */
+  .flecha-ruta { background: none; border: 0; }
+  .flecha-ruta svg { display: block; overflow: visible; }
 
   /* =====================================================================
      ELEMENTOS FLOTANTES
@@ -206,12 +214,29 @@
   .aviso:empty { display: none; }
 
   /* Lista de rutas */
-  .cabecera-resultados { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 16px 2px 8px; }
-  .etiqueta-resultados { flex: 1; font-size: 11px; font-weight: 800; letter-spacing: 0.1em; text-transform: uppercase; color: var(--gris-azul); }
+  .cabecera-resultados { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 4px 8px; margin: 16px 2px 8px; }
+  #accion-ocultas { margin-left: auto; }
+  .etiqueta-resultados { flex: 1 0 auto; font-size: 11px; font-weight: 800; letter-spacing: 0.1em; text-transform: uppercase; color: var(--gris-azul); }
   .accion-lista { flex: none; white-space: nowrap; border: 0; background: transparent; color: var(--claro); font-size: 12px; font-weight: 800; text-decoration: underline; cursor: pointer; padding: 2px 4px; }
   .lista-recorridos { display: flex; flex-direction: column; gap: 9px; }
   .btn-ver-todas { display: block; width: 100%; margin-top: 12px; }
   .lista-vacia { text-align: center; font-size: 13px; line-height: 1.45; padding: 18px 12px; border: 1px dashed var(--gris-azul); border-radius: 12px; }
+  .contador-resultados { flex: none; padding: 3px 9px; border-radius: 999px; background: rgba(230, 233, 239, 0.14); color: var(--claro); font-size: 11px; font-weight: 800; letter-spacing: 0.04em; white-space: nowrap; }
+  .contador-resultados:empty { display: none; }
+
+  /* Atajos de fecha: Hoy / Ayer / 7 días / Todo */
+  .atajos { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+  .atajo {
+    border: 0; border-radius: 9px; padding: 8px 4px; cursor: pointer;
+    background: rgba(230, 233, 239, 0.14); color: var(--claro);
+    font-size: 12px; font-weight: 800; white-space: nowrap;
+    transition: background 0.15s ease, color 0.15s ease;
+  }
+  .atajo:hover { background: rgba(230, 233, 239, 0.24); }
+  .atajo.activo { background: var(--claro); color: var(--oscuro); }
+  .atajos + label { margin-top: 12px !important; }
+  .panel .ayuda-chica { margin: 10px 0 0; font-size: 11.5px; line-height: 1.4; color: var(--gris-azul); }
+  .panel .ayuda-chica:first-child { margin-top: 0; margin-bottom: 8px; }
 
   .tarjeta-recorrido {
     background: var(--claro); color: var(--oscuro);
@@ -220,6 +245,24 @@
     transition: transform 0.12s ease, box-shadow 0.12s ease;
   }
   .tarjeta-recorrido:hover, .tarjeta-recorrido:focus-visible { transform: translateY(-2px); box-shadow: 0 8px 18px -10px rgba(0, 0, 0, 0.55); outline: none; }
+  .tarjeta-cabecera { display: flex; align-items: center; gap: 8px; }
+  .tarjeta-titulo { flex: 1; min-width: 0; font-size: 13px; line-height: 1.3; }
+  .tarjeta-titulo b { font-weight: 800; }
+  .tarjeta-titulo span { margin-left: 6px; font-weight: 600; color: var(--medio); }
+  /* Lo esencial de una ruta: cuánto duró, cuánto recorrió y a qué velocidad media. */
+  .tarjeta-datos { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin-top: 7px; }
+  .tarjeta-datos > div { min-width: 0; padding: 5px 3px 4px; border-radius: 9px; background: rgba(31, 59, 92, 0.09); text-align: center; }
+  .tarjeta-datos b { display: block; font-size: 14px; font-weight: 800; letter-spacing: -0.01em; white-space: nowrap; }
+  .tarjeta-datos span { display: block; margin-top: 1px; font-size: 9px; font-weight: 800; letter-spacing: 0.07em; text-transform: uppercase; color: var(--medio); }
+  .tarjeta-detalle .tarjeta-datos { margin-top: 10px; }
+  /* Ojo: oculta / muestra una ruta en el mapa sin salir de la lista. */
+  .ojo {
+    flex: none; width: 32px; height: 32px; margin: -5px -7px -5px 0; border: 0; border-radius: 9px; cursor: pointer;
+    background: transparent; color: var(--oscuro); display: flex; align-items: center; justify-content: center;
+  }
+  .ojo:hover { background: rgba(11, 31, 58, 0.12); }
+  .tarjeta-recorrido.oculta { opacity: 0.6; }
+  .tarjeta-recorrido.oculta .tarjeta-titulo b { text-decoration: line-through; }
   .tarjeta-linea { display: flex; align-items: baseline; gap: 8px; font-size: 13px; }
   .tarjeta-linea + .tarjeta-linea { margin-top: 3px; }
   .tarjeta-etq { width: 46px; flex: none; font-size: 10.5px; font-weight: 800; letter-spacing: 0.07em; text-transform: uppercase; color: var(--medio); }
@@ -337,6 +380,11 @@
     .cabecera-resultados { margin: 10px 2px 6px; }
     .lista-recorridos { gap: 7px; }
     .tarjeta-recorrido { padding: 8px 12px; border-radius: 12px; }
+    .tarjeta-datos { gap: 5px; margin-top: 6px; }
+    .tarjeta-datos > div { padding: 4px 2px 3px; }
+    .tarjeta-datos b { font-size: 13px; }
+    .atajo { min-height: 40px; }
+    .ojo { width: 40px; height: 40px; margin: -8px -10px -8px 0; }
     .tarjeta-detalle { margin-bottom: 8px; }
     .volver { padding: 2px 0 8px; }
     .sub-titulo { margin: 12px 2px 6px; }
@@ -385,7 +433,7 @@
     <img class="logo-marca" alt="Orbita" width="101" height="36" draggable="false"
          src="data:image/webp;base64,UklGRmBEAABXRUJQVlA4WAoAAAAQAAAALgEAawAAQUxQSOQlAAAB/yckSPD/eGtEpO4TDtu2kSTZmf0QT/8Fz+w9HUT0fwLYS5qZf1ySSEry/B6qImlKev40Jbb3fSOJVSufVro2dpUkDaDbItYHZ4jOY3mq0Lg2DUoaBAbmlQTgcQooSq3WSNyRNGygr7PnUdW2KcpJN+Oy3V0Mb3ydc9ZyAlW23XjtNjbogmtmPkcVIO2kKtviVBllVfI8pU3K3S2J7iEQLWlZ3z7kQ62f/Xgj6V8MCG0kSZIc/GFXVe/eAyAiJgAy83/Wz+UxtTU6PxKNFjnzHOnoSU93OmnRUWgRVB7TFaRGkzQeg1oqJemTGclM1i3R0g9Cv9HPa6O2bXkbVzvv+3lfsR3bYcaBzGQww0xl7pSZ28Xcft1lZuavC9fuzNc9VO6Uh5kyndCEJ2wHTLKkF57n/mHFkZO9mn7/ImICPGvbdkyS/n/7eT+RWf2xbdu2PbZX4rMQ9hpwatsa2bb9+XRVZjzXOYgnouqD77d7GBETwP8/FBVAwn9Goso4ExGz/yxIGwMBQZC1aRQ5IeQi/AdQ1AFqKCpgYAEQwVaTbNu906xlkrtyEcTsmE3URXEhEg5dUKegYhYArGRt968ZmsdduKzSeGjDSI2AhWMuUacuLhZigJ6FJ/b1livFiJA1GkP7h0cbUizGkfhMk3V6zUx/2zKg5+zTN/+zYLn3x1jZXLFSK4Kbcf6bvn3Tg9v3R1Exon0YGti95Yltew7WPbI52+73d/kIPkWwec+u/Uy8t2MqFRGXNPz0i89Z2ZMyPm9lo6NpIzWJomJ1Sm8R0p3rVq1euz+qQFb9BI2aIl7y9NULP9EVOHYWFYkYSadf+vRTPOPD7k2rN20b2N8wUxWVqNw1bf6SJcvndcNja257IK22XkmrJ7hsaAahOPbmrX+t+mMmES0yEl/w3LM9SRLZwKN3P7xPAbQYiVgQU+fiYlzpmTl7+dkrnj5r6L77e8/1xTz6x03mXn1u7uIXXY+XYyRRF0amPO9FPdCMi5v/9NdtABLhnBnBmxnqokKhoE6zvDJ/xdXPmbdlUd6k8vCNZ1W3XPf+k72cN7DLRcdE4gp+rPdVL4AkxPL7X2wHUCx4QEQ87UVEUBdHmj+4a84lJ88hM/3dsnI2ZdvdrwxhVtTPsZBooUbhVa/FRsq1fdf+ylGs5qamLqp1TZ2r9e0DzVYamKhGpVJjY2t5FcT6e31McagbTAw99tFiT1fh6R+EETd74Ee/pThLxlpTtdlIy2HvrOWNLYlFlqStJMvsEIh6LbeyxmzQFbfMj1O5ynxxb3Max75S7Cme8ktPy2aOfvN/IE7HFi6r7Amb4+M3+LO39A3s2j1WKhY0ZFmW+9AOfJ77aMvseebf4L4fah8nL/JIpWp2rGOhnq28QrOs2/3z0xCZxf6Sk7PC5tvOOf6W4YvvcctXbLi9ruW7zmjdLLX4p89JVfWRJ1YsCwU7vtDgWFdE8jlPnp3lrtT4zsaFJ1Eolqr7CguHu7PpVRne8sCBBactqu96bKC86IznLOpzf+lFcJCr6XEDBT22ES3GnHYurRC49wenPzUakVapUiiTRhI1Hh+TR7V36rRTWtc1Yp129Hlcd/Hay5sl8aC0ZkS+u6DHMkbkKucvzPFR848bTrhgr5biUqXoLARG7tthwJUXN34+PHe7wTkdzx11F865XlRAiOJp26qFWI5lQp7UTnF5HLvtt26f5hrdpSiykgMLjWs8KmHGy+LS6uKcH41hM16gVHsaX379WMlhmZ++peHAjmEsS2pzsFjp3xGxPy3ETgiRqGBh1dbdBmeea6Wyz+69h05H5VLPzQtDjLWisXXkCMewQnUqzoyDbmZVokjBB68y3uJk9z9GnzHTIjXx+YaH63kxuJp/1rWJujyu/P20Z41yLCtERdIQsy/U4oIUiiHLQx5EQIJ57Ppzj2tFhULsgh/81YgX7bqbX3trI06iR/Y8+dtvzatOjlWUSIP4hO31EDTS13mtJysQLGjBZchwV4LLnn/ZWVeeU2YSo1L3ffl++yEfu/0xe5Pr4khMQkuCmf1bFJMjzlm+c3/SCuYKr3kXyQCzfOOOZ3QFa+Q2cOA5vUx2xLkHkgcXz/ti/1g6dG6MTZIkU8/pCPZvj2MsFSVyOYll3gd5koUEhGj9hsrTXGZZir54sTqVSSHmPWPnTFt28hYbtTtqsdPJUAfe+F3f5e3e7k3v+a+/+KM/3LApBxfs3xuRviFyF2QGo8Wiy9M8LJZkiUixvzH9vmXzDJPtdxU5ArV6geueWnyHjQzb+/Oa65w60A/85I99j7c+uXF4wz//eE+Ok39nxEW/QTGWkfhqHBN8aCJSFXF75wyXCiZx+c/3c6QKRN0PZsN+50DVSYfEwYIP3v1+r8l5lpS2XET+yC+uGUL/NxGB/F8S8WULQel14YAW4kgFS1biUGKzYFLb/dhqL0eIAjHvtmZiod/S0BEHC76yx2wmiaICsSCOTd+IcP9riHrAlv8zHC/ydTHmxzT2iZmJQUNMMBMRM1/Y9I/AER2Vlh8MjWT+OsusA1lM+eSA+dQn6JEkYBJ8zB3noDJ5onrUToIG3KLqMPJ/hHLcgTxx+XHzzO0bVgsmGBLpCsFELaTFdXeg4YiSSukGGxmdNjRSlMNbevUay5NghnFZkWhrIbPGe0En7YgUi9/ymoVR+tNfRv5vcO4P1szr9lIi5Hg1EFWn1YAaASqnTsM4si1r/QFiXtJbiPVwlO5nf4mH02rpoRABLFSVtHxGicm+f+NtJdH94W87JmHRL8B8fNHP/qeC/G/geIuNpS37ESURlotXN17bKkEErQxUhCM+RGsaRRfOXJw4OxzmreDpdqd1g4iZgtVVzZhemJw17/H9uUvk0d9/FNIZkdLPGK0qlo6+6Ef2v4HIoj1J3giP94kC1bhWLEROwUwnkWJR6dFbjSPfStt3FKxVWjHKYc+eT3gSVACFAAoY0onmIgbnkUmI01s+bhHPttfX6YhX0uwLQTQqNl9xcXBHn+OnNpon6ZU4ELrXbu6KnAjTyZPpw1joKnPXPRyNpsPbwTg9BDuMqV1B3TRQEAWjrWFpSKqKRYymTkRVpSNkpiPax3ZKuNqEIBAUXoBE1yI5OhwXJWlat28RMa428vtiBiHoyW//y2s/3RYqcy7dKkdHlmwhwEkVJmykLndItFKAYsFMAAGSWgTEctbRXrUjJO2ElQ4JU6ZnkQmCGCwnz68drSp/DI0k2TlLhPHFBf+d5UFU6p9+gaeQ0R30mBwN5LaXoDZ/elSQCdCfuGACjsS8OWW8edNEXAbDxPln9y48YemSWSCHVy1Z6LY6NoekYCagLqJC3xdPe/epfnIGchQ4npo3ksQ+TETb2iW/3FIxca6nn7GKIcHKHB2BFkioVVwpOoQxNEIwH0wTmhCckO/eXQ+lmbO74fGUSQCxELJ45yte9eXNQ1v/fBlyWBQJyUrHpriKCRiKWIu+D7lqZ6BHgcT/sLSRb5kq0kZZsvWaXnUuvvunxwwwad26T+yoUIrjHLnR3nT7LqdgISSp9LHA6B1/vHv7UIDqtJVPe9abeTglChhGsC/CBbvqYfgs9PDixnYIZedpCYIIeLmdMHzayDo/ZkeF4yl5PW/au3GuVmc9euEcLxTuREzEaBtzNEqs0xAQy7KsnaYnebStrIhZCLmj/7MnMD4Kb/7VPYCYpZJEI7lQ+HG2yz5BdHjHDfsL2zztTw1RFYIv77mZEMdqU46jUbnG6knY2ityDds55ZloYd8eDDOErgVzhaPTFeaj5kQto61adtadZiUELHfptbNBIhWpSOx7r/kH4s0qJGnab0T/Hg7aezvRmjWm5oVZ4Sevq0uM98Xi+0FlX5QGOwqE4wZDMmIfxnFrmPU6I8qdSihdXC5QmrLswhMjb+NUUMXwZkeAamWcDo9JaCcDp+kzpYgKrLtpD06ZcCL23NVUC4I2Pk1Ofk6oN0ZOQDtAG0mj46HwrTcDRCPvJsqdDTHJUeH4P9bMkj1zRSaitviVmfczenYYV7i/IkDpqrPW1PJmsCBaKkvIsxw5AvyshUFg3/5gbTQpzA4zI0RMeWI1TjhcC45teW5ISUjsjl02Zj9FOfwsISEZJ4DIYRDjiteeWanffg2aY6SZBOTIEwoP+LHEfoBjwsa0vmJuT6lPnf3oPzepIlKsFqdPGd1HsavWmw6bszwVBJskmkumtgQ2jBntt64IumVmBoXBYTA6GJTumpdY1PvcrJH1L5AJqIucNts5rDXaFOIkZ7xzOiEkyijX6hCnQrCts0m5OBIDIp2YqIghmEkHlJXNZKyVnC86MaDB9J4pFw88sf0Oxkulrzj24kvOmarJWLH5+AMPPbG/KcVCJCI2KX4lIQQepL2O0pNYVpgZTyWI0WHjeNk3KxofmgfqWXgujvbO0XYexeUkbZ0HKgWpCSBuIhPMACMI1dGcw3eOiTp3WI73WqsebhXkcIS82TVYvlKZdfZT5xDFDsqnrt/EjBkVgPq2xx52qTrndFJ8fJm5IGP34tvYIwtihywI88t0XoyL3+3l+0jiWyN7D9rbcbRVhblXf/aa3+VhffnLwapa8cUrn3zKnJrbdPcv37ocZN3w/qVJJKKF4szP3hrnjbKd7EsDLg8h++Er0HZOoHLOihNnSuPA5n9VQfQwVP5kacPej+PwhW3s2XfJ1DO6v/GiqKvohJDRv27N3uLxJy3pBbhwxfxCikulc2onnNlyobDhXxLGuWRHX+6kQ5uHExaYdA7xK794WyH84N7B9F042jq47Nq9ZmaaJzuaSGZe9oHTGW9m1vzLc7Fde/gMDrlxeyE8LjrbFp5NW7seN04ULvrh415paxt/dAE4mYiEuafk5punoR0QFbY+nJ2+uLZ6bzn3WFYrFQrp7tV33T8w7exnzxsurTxrefLVxJWlY45P21g6MndpXpRxxovJBRNMjOKTESZT+Y0mwYLl9fqovQvlkIu/4rM5O8dbumeOwcK+/v5XP8XL2bLpjG3zwx/g+j+97rNTumZ/QhDV8Uh4WgIDNHDJfz1ZyFtZFYfd/Nl70ImwfHYrt/sipBPMUNe/9WXVf6A43zVzP5KGIDQ2P3jPomVzzjzopp92ya13Fei0SN/mLMnHzhi1ggM0zL/YR4yX4LvuiW1ynFwVJ7maxM2mvY1X9SJtTrz4zZ9tW7QZrbrSTuPBvZVSMfv9R30YIfUEMZpnJiitRZZNohageelz74wynCqCz12UfucjyYTOcZbbV3F0WErl6ftPvezvQzGh95XVJ/ZFWSvLLaqWR9fdlF/xYoI8+emrcJ1yfMgaWRKW95dFwISzp+YuIALm+bpXJlUor3epuIK2/Ov5WjKnXWVaeLhbAomHUjVs5aL7loQ2EA8Pr/XmEGs7KHZ7glopNNpqPuv/XZZYJEpppIAnvvUlEzBWoOKf1TkV8aX7pj1j8XnnF684flW3x/uAU6y4emzaD6L3VEMofvT5aGdEZ+zIsiw1l5XEwOBcPBYEMaprtgWZHKKVnytkQii2XsRPbPhMFBjOs3AXSUJkGBUL29IUQV0m5HT2sjQSCMUOWSurtKPiQfMFPztprCwYpCWpCFizstodKlSORwsHlqCdAnJb+8/BZ5190aVLfGOsMjSmcaQqQqtC70/81SNxM9n6VFxHHF+zUd/wW3YWaBtkJULbgPszjsl18vHPFpIM9l2of7KD4VU4Y29dYSHCOIhDZCWOJypXOhN/bsJFk4m0MlMI0lZyNFR+QaMCYGQKUcCkUUlbauOE2ky0eG+MdMwQK1X33XvXKfOrU9IHBk5YXE/FSTAzY539ftqCYl915++m0EnljGaehYa9ZzDCxlnPkswpJhBE7p6siHJfkrYS1m6u3WFjw/Z+nG59IhK1BFqjHxU0xWo0dZi07J3t738hGbNULVKBVrEmCSD+szSKDkNANRREwGesPSjWplrxxq9QOu9NCE6HTluadk1vfOiR01+w1Jotick192ydcanH+a0vKHVAnN4SmnnTVvXExnhlwbRcRDUEsai5CZ0MVc66u2QZ+ca9c9dY00bsI0Rjv5c8iNC0ncwfxExYo5HATLO2GNWY+x/946Uidblm02hnxnSRMSW7/NR6nyKGCNomqQEoIefXtJ9e9saHcZMAwfJma4wLIyNeWvz5/VPPXtHbGjRnrUplaNeikVjqyUtqlVgPJ+Kt1sizseRyfG6AKXNqQUQEzKJdDpkEBx+om2gpWc286dYIfsQ+jvx8sAqYtOYeDGIBViuiOa8TTFdTWVvWwzdb+2yoUKusUHPn8rWpjFY/Ax4QDMsG56gBYpZW1v9VwrgpxRBYzyRvKuqu+8OKvq54+t41Z7pV9dT1lKv7ZzSseuewDFdtyvy/VkTQCRn/HNq63H+Cp//pap8wXhTT/lE6L45lf7QsLRX71zCvmrUKIRgeezONGiaY+Fi3P/pvL/2KIgCG15Cav/PHX/7RrS313gKI0Cr3XMeubdy6ttWz/td2DYLG23nL6a0SKgYhd37VDdf8/gmzPAQzCyFunfgG03FlATs4WUCsb/etlf0sP75+Rmv/p0oH+5vDB+Zo1vv4gadARLwWUyKZQNCd6wvnrH70XeM4VDAwMDNS3zmFl+y1JMlZv5ZzKljM+IwZV/nYECAv7f30/VyOjiAYkmd2w/kAb37/bzAzDFDm3zAZlwsx4zI9l361lfa1t3gDVUQcf760BEx77WZ8EBDn1L+94gUQTMcOYJMlduJT+rHHH7grf+blYfP5OqN4YNdwT1TSmm/cXF8zdHaeBTOdgLix7Vi2/T3fYeLGjPEhmBG6y50SY9aPQ1Ifs6G/Hlh2Cj4SEURociVJyQCS8o7XgkR2LQGEEFpvBpxzwkP35QEFMbLaRotciig6A+1zGoAou3RZKwZRNQu33waqArMfR1XUKc4vvQgFEkyHJ0/shKf41NL68J7H7tp9xauXbFs/LDpS1+rcU6ZGdw+Orbygq7+R+diJSJvINiJ+PXvT9xHXyygICKD57J4OaeCCzTY6OGb/OIXBBeSRAILabq5CASzErddQyMJY1MJQCVnpTTgngNcIiyJVzPCR2U+IutoqCL6ND5cQBCAKCuoEkIhBBadipmZPRoCxDBpjTLZFFxII+Nxbuvlv93RdvnR01XYZ3Rd2vm+lPPfRmTNataFR79WhjBf68diW9xE37cvVzGxcmLYY7YDC/Oct8Y3RfPQjytAbKHlpFzcf5zQTNcSSrv8magCRbYcgIS/fQCS0D/BU0lhFJdiUN+26UhVCpnxgvORcRExQDK5AAu0d004PUTBMnJyDBwYTkSyfrNiyShohYiIhbw1vG9u/bfFKdt4/a8WDex1E2Wx31+PqAYIBOXVi1LyF++0W7BxUY7w4cRcihyXqufIq8qRp95wD8d+/FAUTEVUjHtk5K0oKAQS4XgLtEzRIyIP/mjgOrf6Kq1oOjOC738thFuqwbp+xKEcIuPoVV3nl0MIbZjYNwMLCXgMONMSMScNFAXEOJM9aLe8Prl/XWHbZ7J826/fvqUTSlZRn7PRTe2ZPKUeAowlBAq9/b8stZdeeAgYYojwZfzgrZ+nzZ5lg2VdLRMKn1roEMIMgm4aWZPXYBCwe2s4EQwB8YdWDwgTFl78b5eMsL72ZXhzuikQCa6P+uOlpAXAF/WoxyATUn/q+sUIERto3G4zRgSh3Mnl5nAeMgA8hpK3RRmq+f2j2Nx7884aPh+4T60umnHJWZarN6B7nvLSCmiKRukmTVWoAgrjm+aejE8omeurZ5MDap4Li+C8XchEMzHMf1eARw4jqDjtEtYIJblXuJoLwg+WZExGz+I3QTotCi5rg9NgjmMtP+54pE5RQvLZccMFE8mofmNY3RnmpPFnceRKCD6FttpgkaSV5sH3Zqz943vD0ZUsXEVjM7TujYrlcMLojvPe07FHcLtxNMIOsvvya34GbSAQX3GLN+phl376PyPDutz/8mtNpYMHsb7RNaOK4CMCEPUSHcZCBxOuoxAEhCjkKMSYGGANM2KS114Ekae6AsI58ylRkkkLIc++9ada2bSvLcm+uXNu9YWD+mVPH9k0RbKjobhwLUdVkUaSKMpRm53pO49ZR5xVK11yOO4RT5v2wFQ4eGLP7LgMM4KdznrVgEuLH7ydU1IWrcWkIkBwGOCIRaiepVK3V0DI9gAMDw8gmBjjalhp/T25TZkxW7N7RYKKSba21tlMWvDeiggxtW792x2BaW9wVBnd2Hf+y53aHGcvxEkq2Fw2eO8imB6OMQz7crZ8uMk4iSm/eYdnosO3+UBnnAeOB/S+dpyUSiK4bhLZSyQ2kJUBgBm5CgcVsbdP6R9U2aRQaQlzNAExE6ZuYWHl2ABPHxpp9Be1jsnXjnbGhbq0ltvg8BAs+1IfqwwcOjgzuryydmuzdPWvWa9968YkEgh7YgNJJ9TeKCA1Ja78WFXBw4e1mrcTsuhPAMV76t2jTmKn5aPiX4CJkITcohkA4Q2QiYlNOZS3R+juHy+F+jiLWUakbgCG20oUJycLZLVQ7ehDkifU1lk5akA39Lhi5SBOCABqFtJVkSWqM9C3R3Qdau7JXnUARYdc6hI4Gbhoo5RIN1O1biIPpX29Yq5XZ1leCE9qObYe9bSKWuN9sjHFbLEHcHIC59JwzxU1AuWre2Ja2Xf/2hwjTo1FJK7nyxGDFEKBx+hm4idiTu4MYhwVo+LtyGjZJ4B8riGAEMZxqsVxyPvMBCURzp/u9yWih6hN8zIY9mHXGdM9Nmtiqg3zE/m+MvOJxGx5uWuOHs1BlvJgbw0uqNZG48W0BxXSG3pQSQyJf+AiRHEJx7xNpk8z9n/y+UIV6+uzOYfKOax1s6T8xxwSV8gdM5cqyrrdaUYLlYl0Yf6qzNJo0kw37Kyra6QjqorhUFBOCIdR7rmLzXresJ80z7w7eOojRcfnWiPOnqvSc2+oXcsU/Ld1/ILE/nQuO8Qo903BmmpQmxesflsAhWy/QEG087x04bePEf+L8pFidZvu5h7WIHP37vyydWvHpkwtN17zATDBKrRe9LnPrYFvhCye0nGAlDoP+6y6/eIHpJEF+J9BVoqIiopKKiolq6H0d/be6JUueyAVbfYfFRseDrP9Jyd9VO2sb+JDM/IlZ2kpszcvACSBO4fSlmJk5zMbQ5wSww0TaGwIzMInT9K0gzjm8/+BHWg5NuvygFFo1/uMvVNp19/iFH/IrpxLlt2PGeEm/87Jctm0Ln3xbEllg4o6XZ8nVuEkTnvvut4AZJiJiombiNBKRfMn7GPmDThc9kJZt+90DUT4JiE7fmjXNt7zt/3R37VMHLG1l0fAPvnIwFo8O7/MF72JFOlO6Uv7MRg0QBlrmllIpMfPkW77yN5AP/fAlgEluX6xlL50Gy/wSOWAmj3d/8WU/6fLERtLynuLu77+7FuCcj5hQidIDkepD9iN00pQT3/U6NQxpSwCNo7hsevGljNw4OK1Wm9IKe27vvVQiJlW52hotbwe/OKPvI7usOdq05H++vopDv9FHf8Fn3T0mGolmnf32WxoAyQF6y2FQ6f7kP3/xd/7zDb7uM604LDSWv9I2x22E78st0HbuHr7/O//a8y7j11b3eZtITvUHNox0n3heca1IpyO5guN1tnUGMllQfNG7Um8giIBgQlzEjn+asO4ng/Or1SnTDt5+y/6egziZFCK+Y7b387Onf2rAksERa1573r1c+b4DD+4by+u+7Qd9wNvZZxFU9K7v82aPtWtpUzeXlDRy3jY8OeulGIXwlorfDxKo7RcfLuZtmmYzz+xPnNNKsgxp7JEDyI0lkVBXRSv328txk0fh7BmFIIIAiAiaZHOuPI7Wtb+szIriWu3A3Tsk2jGMMbmiXTe+q3vB1/ebb42Z//2VsOjDry5yyD5aqk2Z0cc3fYd+FwBsgkpzSyA0CjPNLLQFGqc+zbSKEs5O5x86NQODPXmW3wDfspFcBcSbiQozddi60fF0u1nkCIBt5RmRmHkTRULLL7r4eHjku71dFaRcGBqSWnVosIhMjjpg5Y+bFpqJ2Z3Phr6PvX1GauNSNoIUiWS9Iedp4zJKbqhIo5CiLpcydTwHxEEoY8+1qwqpYCaIZ/ZbdMoa31oWEjMBgUSo5435ZThZtJ2KmHZKmpsHj4sBUWepnvDU6bDzJ/8qVUXiai3XSigUBmuFSJGOSQT0vvZ2s2Q0M7v7ZY7Sm9dbSCMxBHVZmmhLSjyH7CXi1iIqqIqiIRI4qTsAGy2p6kreawaGpOKp/Y6IM4aS2dIKEzETqBlp+xwqs/Z/GweIahQRnDrFOoC4A91zfRyr9z2nXbEchv/wxyld5aZOmV6lUJS0lyxykRPrUBQ4+0trzeoH6pbc+oqY4svvNd+MTMRMOCxtpzAr40aJw3blSk3TlLQLmirV7kLPdJNxIVqEXW/5ZLUVhKjwzG5CHVdnuupQTMTQtdXVXsPxvIHZ4tQVi1HIQ1QuOodZBxCpLPa57z7hwjOnwvA//zpzxtQklPp6Yy1VipFb2MoCokhHkmHO+28b9SP9+xth/zWXQuWN9zSbI60URAwTCgkp7fqnp25yHM8bFSdP71pptGoGTUUYP3Q6w0Jwn/lmDS+aRh/sepSIl3zWSw9LCxMFGE//eE2nM8wNOP/V8tvKEpesNXVeec/OrNxKLYTDUvV+W/esRaecNMvBwVt+O/O4BZpXerp9PRcE5s5sxqLaITHmfXyH2dhw05qPfOwkOOFjD+X1fSPNJENBDEDAxNTy2G/8sd5iVLUSbEJmJoTCI+60FooABuJDhW99Y8thDpilBIgx4AtBnQlYYjei4DjnYcsbzVZLBBDLvL3qU9ZIk7baW0SjH31zVS32U192XrB49Pe/F7zZRERUshDoPW3W7ARg6913bGotzdNirStOUxVCHkoLR2qVSDCjo9UrXvFE/3AwG7zxBVMgcq9MrH9gcCzNckUBARNDDW+14Z/6c7fnj+f9jNGcCVoeBKXZ/dP3ffOlpZAFQ80kiln7aZZLsdx7MWHfezH+wYcgy0Wgld8wDkf1o7vMkoYphsRux3P4ej7aaJTZb0LDnKdfo/mKdxHyvPfEq/u/mwYLbUTUQrBg3Sedf9HSPGQW9q+6d8OwpSNZsVQr+ywoWJ5LaftwMYqUDvdddMnx6wazAze/83jAKcJxN/hseCzL8lYoE4Tx3qRs139r0tuiJ2/guFsmoCXGm/zuOZz7hqsW0f7gA9de31xxtddVaH86MuGfX3/tBV2Mt5vboDDvg/fWjbYHrpuHftOCGR5P201E+fGFPfPeQrOqRp6/pfsXlvogWAgWoHfZaeed7Bk/8tD9Dw7EpbzRSMpdNc2CEsxH1Xj4K1slx3WqePJJxy2+7qvPXwqoEwCF591tljZbWYoLDALFOLv5m7DGrcbub9s3sqojrQk0bssMxEo3f9Hl9K48f1HFNXatWrURnKvGzSdlalbz0l/oxXjPinPOmlWR9DfvbIc40JNfuGJmJdv92H1PUOBN99x6x11rO81r/Oc1AeJiNNs/m9EZG/86uvxp1fR1G9anDTNg9rLTl5zW3WB82Hbf3+ykk53zWZp7KTsxVIRQ2frA2h2zCiFgdDjqKftUAXHKIVWJn/+7ETMPLSkYogXY84drQHnOwKNf5FZrE1h3GRNUAocWDXYNPsFE50pwwTh8cUxQBUBEs1by7Nr4qNRd7T07q2367RnTNtdfnvedd3/XjFmz5i5aXB2jrd+x9vaH98Pi86WVZzmikYghEjTSnz1QrExbiIqYdai9c8rEHbD8fX973zd1a7rtoT+uA9HscEDWDZ4JyqEMED2EBSaucqip64YKZojTCYCoa2cBECYuiEjkNCpXe3tOHUvju4+rpNHqqSfavOo3ehhv5Glz54bV99YBCr5BlOaG6DgVzNKem7f2dIVGI5iIdEwA4fDFCfDW7/qe7/rWr/eaycYGtq/dsL4Oig8cvu03TNgONbmBo1hEDgrpOunqT/333/sKcexcqZxnpNo0H9FFKE0FbLB/55rt6/sLgCvgQ4r4yEwUlRhEDLX4AfGZcwTvEY54jaQuVzxtVb3n39Vi7/yTzzlhfl/BaexIivd8r5776bVGvL181/DA1icGpcj4TR93EQFT2U4aqxgqLvQ8sNk1IjFIDuSIwgqmZNHW//f2TatWpkyb8boTk/h3dyY9K0mSf8VfjoGoUIht9AwmopbXdJ/KKsSCWsE+RTENAVbqQjg6Q/3/rwgEgLjW/cKvJC7a15xBo/e26pI4E0hzY6LikDyOWuyCmGRR9wcpNNSCSS2XR8v/TwsaF8t9xbe+wdKC5GnP9ltWxhICh7lFGJKHKJJJBBPfZR9CW2CYOQ7HwlFUqNSqL371HMDfectl83DCxHPaVE3EN8SGrJoPtV2fx2UAxqF6TCQuLpa746UXLtPd67vPmh1XXCQ2gWwrm4gTXxxtniqbTlwu7P0SLuXYPI7jcrUYFUJy/HGxll2kHDJrrWyhKsbUHb5Czvf375rzd1zKMbpEccEVCo5gaRzhHO3FHWQtAZsyNqiTtrv7WT9/HMmZePrKSba1bRvs55l2xomoc6IaiRME8jEVCxIKVR392c2MG0PrlXWWpLqL1FQElQgVJ5ETFULWggh69v19ZJPUrWnqlXyCiIi6SERF0UgEbaaoxfWNGwOs3Y1ZnfEKX904dZiIK0Qy3icOs/KPXCXPz44Tq7N75a9RhKAWQsDFxYKYy4NB87ZiPKYiYRXZ9/GqYBxHkPvc5967WiWyxJEXVq8DEY1Uox53rxoWipEFn/tWmriebiMOlHPLEaH2pZ3z2auKUaGg+LzVHC3NLTuV7ltumVL0uQtTM4/j1UeJCsViqVSbffGFCdL9qx9Ug1by0eB94D+WUigWuxc9dY5VMvnL9blqK+M/oU7EhyjnP6ECGIcWO/YCVlA4IFYeAADQZACdASovAWwAPj0cikOiIaEVLQV4IAPEtgbcItWlwPwH4k97JgXo35Lfkl8otPfqv31/uH7MfID/K/bN4w9PeZh5f+l/6P+4/kl8G/8Z7IP0J/r/cA/S//Jf2X+7frl8Wfq1/rP+49QX8z/sn/C/zP7//MJ/qv+B/lfct/Xf8x+x/wBfzb+2/9/2qf917Bn9u/3fsAfzP/D/+D2ZP9p/4/9X+//0Lfs//9P838Av82/tX/o/P/5APQA/4PsZ/wDsSf69+Kv6oeU3+H/JL9wvXXx7+tfcD91+hL1D25f3fnT/ufEX5U6gX5J/Qv9x4j+721H/I/9b1BfYn6V/wfDK1X/A/sAfzj+t+mn+w8N/7T/pvYD/ln9h/6v+P/Ln6Wf5v/xf6Dzm/m3+O/83+V/0fyB/yb+o/8v/Ae1t7C/2y9kL9Yf+czn3NIkgImBxzDb+gi8qRJL2qdZIpgycU+hmi+HrHPl3f5DrHhLbrkJ8rlpmud+sLXG0n2fghshV2U6Lhybw5YVya9R/m+z4xUZOuqWc/KUXirD9jedWbzpIA/hKq8zVZxDwpZh1nyI1uMuHYA2X2Iirn/VyIDlM0tjR6qY/uJb0C0p5CuL0RtulEupU17Tcfov6K4qFLrrKHkEHxypJiY9io3PPc2EbBO147GRKFBhNf3M7xijXVoYLSdmqqN3Vi0J5t53TvoLAO/elzn0w3Mc4RQRUS8Oyn3zPUEMdcowOoymNlPwN7Wgyah0UUU8fqksuCn4oznm6Ton2RKTEr3MgaewX+Os4SrrVtmz5x6pp1yFcWjk/9pmEfQ1flquOW03bvwEBYz4dDH1/VPsN1NTe/GVz+ZZTKMlaUuSIXurBe5PrhXIlBYMLUTYUW4lPQhaymz6dlwG6hb7j2RMSrbLQtX9DWzQrFcSQV8bsNL9cPS4rrWWD4ixC4/DXIHIQFHwJs+9lr4KZ+EuJ8MqXbv4WuIOD1q5JEpU3sClFHqo6oDH5pqEbszF5vvgyaNMn6XKPmGOHRl1d+U7LsZQ2TrTJFtpU3hm6ydRGEr+ycf+x+vunfuu6yw2XIYwGw0DjICxPUhg3YltxwAD+/2AaR+WoQnQRjD60tM2sgouqTaGcg8can/tRif+mxc2l0ZMuMXyqT+R6nJHrIfQHaLxXhnkvizT4R/TFT4c+R/Lh43iw0hRPFraN4rxnbmP5tb/jXMbbfpNs2WFqZhf15kyQ0hm80XdfS131j0x1Mn6mXqhWZfXBP2ruAsU5xVqQBL0ZGXaH4ZCkylJWl+WaFVSLUVBv+oxyVvIo8FpGYkpBlWEZqh1HODg+nWvL4FZp6GOsrVyz8GXElChGg7AzLHrroNaZxCADVboKXH759f/wrVIT6foy1HG/PwxRAxhpCPXpIhXHXLVxXn5dirNNfDferS1czL4rDdvjMSgKEVL2MvYNv+jzcqgn6966zmQ4Mdh1FOnrFogQwBngVsW8wAMLeWfitB/GZq0OngWH1WSNLcACoE0B62Gutmed2/S8oVIGStccP20gyAEAsU8d9/jMUcxbzXCk8x6ynS+O0Z3b1C7fjQjk9Ab0Dj1UV64UJ42auSzwYHmq4PxmUVqtoQBc0mHxGrc5WjZFCAtpCbmkhKOpuW+jpq6UY2vT4bnWH1mSd9rSD7imKDbACToW1OW9h2N4xfSxBctILh9cqEoCvDdkgJPE9JnU0k7shv7FjYVGvfF3sOmC26nFuW8civnLdAgnnJJuoh43XXTt+IKFC3DbPOLfa8QuQ3p3sg7nJiSKU3dW5LhVuRFAGI88Mhz5s7OuSxMfIuQ54AP5IENFU/IOs+AakRh8PmyMVzgU+xUD1xubzCXakLzdbMb/fGV4xfNni2jTA7QmxQTxKqF05Gmzq7Pc6fk7mymqbdJoL7wYXL4awuSVAknlq+6bH3K38UsVGoFwYMQv+DuwuVZD1EIVkRRhsvGofY5UM9G/8vwZGn5emRxrkcZkFIEbq9H8kdQoaci2V5/PzWVH/3AUlbdAAAA1fHIoPzQufAegAvGNkB0Zab+XNgWA8qamVBZoW2TwTAI9wDnf+WfEM2c5eFxquG76Omm9IzexYypLefIgFuPVZeoy59pOrlMi1YmeoeaFU2VnyRSE8Xm/jiTvo2SWERTcg6zshIilp+PKNUgzYZv4GzPv3nnaxewhmGX6TGA1ubCuhCDoofA9qh+7ar8QjhITI638ib6IwhEogs+q3Y+Ve+kRUxml7xnJx5R0QM6M+VqtknYCl5M+hI44QpfQBXF4MMTw346rU1uHyICflJoHl1OHHds8FC4Uh2jap/Eo71uiZepNebi1zNKPG5E3IK1urQvGu2fxM6e38NLP9e52nOpYtBEBbmWryZ/ZMZj6/suu6J+PAHclS8l1MSl/1pewTivsQcF8tnaf7VW7d5YAAUJ2Z1VO29IHhM2xyuYEyCZQIese/355yvOohnRrcfS1dGBFTsUrgE+8PApod71OIKHb+WDTpaeUvH8CK+eR0uFU+nYp90cmrYCH89xanbLHX1boOTnzfVs4qSBAlXY4uYJU/ujfPMAZ7gKX+vNtj+u8qoZ0g6dRa4NTOjbu9VpvuGpOqP2s2hGARWcVrXsdR/Ygc9lxQKQOrFP5dqQUYZ5Yi3V0z8dUE9Y8fcWW8CAohTyB1NMM7DJYdz8aVfaeQB98f28Pxx9qM3ozT79R1bIHcbUUp6t/kx360E44GpYiLy8b4tsM9xUR09zrHCz1FLIxhXC8bmQWFDE54aszsf1kTHg+1AXg5uGjjPom8JXhiJdY01Vogtt2J9b7E6fhRD2/q+Lj5H6/m4AAGD2+rG2/drKn5RGwc3bAHh2TlWYkQHF/heUuQOA3zYeBi8xbHFY0zYQsmEFAEY0QjG0KuVnfzcACH+mpTAHb/jvcMKj9a70Lscyx6u1Vff0ObwzaeZf2J83nRA307iWpD6ZtnqFO9aYEYljHC7ij5dZsGV1VzNvuqngyyh+dszaqRLl9z6OSfHxgBIAGjeTLEEY7Il/AT6ZHyZa+xrAZ4yUO7qH9XPeYtTBwEg/SxvdEUQz0hsDZBL/bDrl/w2M5NzfBDMZDEn/Fb4vSY/JXawrMMJ+lW7+2ipVZESFzT6TMcDK0TnKTeS4+BL4m+jllgTuVSITni97Y6WqBw8pC9oUmHKurVRo+a1GAn6THJSfJlEsCvAVzmZfNlD5B041zivsXVSVu/XKQLO8E/sIxLa9hiPdnSNcvRWS7ySWhol5FJyZAfqLRg411RVTnVLu4uTsiMoljUH9cb9e37y7vHJKW0IQXcu/fTlOSXjZyK1zyZlVq1wmBk/5k3kMyow//bvD6GessKcqDpRHMX/eIxjBN9/QS5hivXKkb6BEdAeZnpxt1wYzXjyBeNvZeOBnMQ9ySONmxcjmm499aRlZxa19Du9HhNPfMfrYkSV3+xYfhLd85WQV1hGjIsOF80DWrNS4WvudH9XQnpnJMkz7Vl9IL6nxtmqy8yOb7ymX53BEhQAfBY4cJ+9DhWvjd5mssMc5W8b9eXF8xClhGjEDIZN9dwMuHEOA/nIpB86pYs28DsfmzS2c29/P77iLpytHG/PBnB4D6NoApv9UjQ+M1o62T4bUBcn4c7UmnqHMulE0yVcq8XgIprtYq0AmjhsMSS599EWGqcXYNQXMz7IlCIar/V8AY1L6zuMVh660HhotDSA9fTHqBxtSYvD5nCd4rXC2aKoU+HGnAdSwsDpgsDWyatC3PztD58cqOG9gUNXN0KhA9zE6fjqb/SXaG3ZiBk//DgXvLd0y3HDk+ZWHiaQX3MxXi66d/n9M30ftFth3D+P0aHCUN/ty+t89DcNrk/jjFVLvI3atLckKSO6yju2slO6xLtwARtwNP7kUCHmL7EULv/9GSOB4G8O+PnAEDqfGbTWREutiOhGu4tRf9PLV7nC8YPNcaK3zuRdqJLDXfkvIzrVLMXyvmaedy7bXsEYfyDKvIE6d+psQ0oLSvwAhC8uNVlKUjhbkt3+9j8jnpGU4ZRopgo7Y2CWE/xSaPO2SufiJ0NhcAoimtB8yrN1aeCTvmuNCiQ6hCt2PGRArdTtESY9YqZqB+g0UiAkOCWilCA9wktZR24OHlre9h9u6+7v1ruczNRgVM+d5ocT5/7jlxLNGZJBXNMmDHgJgfZZ2W7zBW+G218SRObsLlZIv4doMTtkjqGuhJIDh3uPBYekqX1LqvET4uvnBUqRuzI4Q6BED+//kNujCMFpd5ZkfCN8thSfRIGTOy6yMiOqOiOnBfZu1gsoS4Z6/JT/2ORXdjNL42vUVcW5OgJHb8U3F12fg7ftn7/YrqBgnDFeQrAI7rHm5Qf/I0BayNbJgizO80EdSMFvY2bLoG4R4sQo8mlEhdp+T2MxTlBC9o07VR6R5jcqPGdscp2VkKWiZA25AAl/lozkAvc/WdEemuVLUk7zBBwr0OyrunWDoKF3I/sfD3OBcvK8Mhw2SLukF2UVEz39ec84TwiFh9CxDLvJ+XBrkf2AboIh2B+PAjNA/UKAEnjEby4rtN3pmUFyAfSlZqD98Iuh6WWkJnIowsjtlWWtazK/CDBnf8aZ2iQK+x7FPhivnhw4Wkg0euA9irUjdDN/VHShYXzevIp3dWGMvJZQXC6ffzNN5z5qaauzhHIC6AieqBsRC4Qtzi2ecJSVPRtLz6shOc0quQLQp9+wEDLJqTyDFPLQ4IqaYunRLqMdnEXFpkdlMbpeML43MiDMKhbUoiI+BRH2Ztj6QTs/9sVMebbb5ASC61BJeJjL3rhXK2PZy4LrgGQzmMDKMxs/ByO7TpIwmZ5HjfQrBHYYV2V9rh22JYWhKsd3EEwcgKjpBsgSSelRECdwP0VOlsRJopWCyBTekk3qelxM84XvR8EfHOfe/2a/6TEBjAExos/eRvOsftnjqisDEra2/q64RFcBeOUcMXLLqNv8BmevK3XJVFf5KzwjSXv57njetUOP3I07exxo1bZfnJYRsVzv1sXZI3y6cGDwTvIp0oWX4xCrDwZGQwFWHpMZJt/ncA0N4a6B34mGfEbhcATYgTlZeCAfyyKiaQqt0U5ITnLQZHOW2GpIJbemfF1gjQfn6kyb2kLHy5LCfxXRH9dUn3cw1pCsVX54wngkfLr/lxVAIpqMlndkG1cTOH8JeJCsPFknMWDizGuXzplgcNOWFaiFSck0nVbiN6hWJBduKc9w1LbJAqzUDYBR/O0S+SwO0QQoiPIbQ3kinKWjWebCVgD/Y+rgzGnbIriio0vBuq9zRjH5pxdnByPdOf5hA9GbQPJSgr1w889wbRWPBkkz4BwmHoRWrF3fNTjNawuNrzSBKR57xnfziIE0AZwuLDOzAm+o7DSCGP/kMFtQhZ0cB0rBgXDPhL96YtVuHqSFqFWWjRJAkV+U/aDQl2rAxkUr0E3Xr64Ce6mXbTJ/TrcegWnqP+FJiVfK4Je/UjfVFwHQ48C+CDd1T1B5tB28L+y2ZCh0/tJvKTbtCnJ32UhDeoJ7Sn0QzRZqylEnu0OTKNsWxStHURrYusH1fSOjlPf5q+szr2J3gk3LeP1N+cDmLu1NgLPkNN1cZRYXAY5tUhRr8CVY6tECuGreqQmofpwJOu6cLQKO4J+KA0B+zPC4JI3aRxrm3zTTx5I5q/KElYuyYjMxR+4CF0m20DewgZGcvf5rxzkmB1XivBVJhkZaof+eFwtnJ6CbLoNwKNC2VWp6p7JtbpvtNyyKkNfCd4qqLhBr/5in1iV+7Yjfbs1UeKq4CpYoGRpfoj2e+kurNctUrwLgO/bmwCVCeKFfmSnUdkEeYXXsb9p8m6BmoyvBeulVzxhHVviQE/cTIgmPxMaXvVHGwTa2toMzfU35XHQACnBjUnLD0MIdc/fV6c9AOJrtzDcIKTcmf/f3DxuwFCd+ubjmGMAd88TA74/b6J54J3SNJttCspZT7QZ4Y2PzInuRrCEwM/uWpuDwuTwGhWdyVEjdTMTnBtpGvfmcoxi4Q9xegYKYhxOvh6HFtVwmFWagzHfi+anAaO8NPvpuoQtikjAiDahbHdcUDr1+wDNlTtzrS7dHKI89XRwjINzQi7/BBw973wAABfdqzZI3cEfUQQc6/C47TFJMZ0SHrkzG+hH4vl/asSRWcF7HTY23g6lxLadnw+VwwREkyI/RVg4iRlc1Bjt8Y/dJdooZuuALvsoZ5fjiJpMObt/DzjlygKpMnurk9692AnvhQyDGr5MssrTm7xrNp7MGxGVQZW5Z771J/omKB1MNsxO0FALEk00fKSbxfjx/6RZMPbAHGWLZVQ5MkJ26ycDnXaHHVEc9gc5448QUiHPDMWAyldouC/DJTRNJdacAi9N8FBGZtQl5KLpBSzchz7Js+aV4uQCMCZNdY3EelswrOFkeAWgZEj9/hphgEErFo+SK930epMlfmMOBZb1I0ofFVrYAZygSoFQE5nOxXLjyNUsR5HLXTX+HHUxqrcMdZ64utn2ACYKJ3yF+JN1rpsPZDii9liW5tl3OsryKwxMvnN3J5/iKAY/l2kICTpfVXEgbv17K7Mx9N5VuS8tXLoTvBlyigIbeRS/kKDrwcgYe8A2/llsXpwhAJoQls79jpQrlGACmKO/qfhGRpM/ygH01Qe/HQC7wmQIIAan0lLonvuraBd1ABpiCVSvxYdTMZGWsCNghyrcjfaCkWZJdZsechMNyCJPDMQhGyy2Snic7qK5aKqlv8TMi3cx0ZSUbhQKwxN7XGWTBWp2v+u/T9fmyODQn1GCkN1fTwmRBLytJETE6zK78+ADUJi9qBww3mnNeeMWX7oP02rOh7n/sNNAZv8/Z9Pm5+fVyg/bJotwaIgxW7H4aVeTvLL9oPoIy/31///sR3/7DM//+azdI9J3P262RUiHD6YDKvMf3/0wipyXZ+8s/jVPgmBI4wtBedRsTsnD7VihFecDcxAZv9qN4SP8+z8syZrIlgEN7PHNVkOxb6lCib0ExoaRBenrzJurt/Nep155mvBKZu/AbC7O4g1E/xMUFkE/rEV0O2nBKTxdUp0JavmaTnaxMk01kyGMRkGSA6cHf/DXuq3cmHePZpGOQoDEZuxx1FnGhAUHs4B84CAd9+D4LWX0vWVxdjtgVTIaipwJ0aNG5rmgbwlR49dDPvJG+fTfgh6GMW/FqymHZH+tS4R0LiizqdBpFhjlQIjcVKbvF0PH01Q2KIXvYbVdcqSD+APl/+DKS2/IrIp/hyLi2VSaoce85GA+rZ0MChq+B0G/0ckafZ0zND2wEKFDO22kbZbyFpd1Z2fsE1SFyJ8//vK2aBbm/SbuXvaLqYJuhghqEzNnHaV5ybowB+NKzGTn0xqmGoAfkANUaxmOEOp86LWeitMnzZW8HvrVX4d3NP1S8Up+T+9wDfGNjnyNOjh9GYwW8xOYaHVPm7Rqe0R1z60jDtkl2G1gF0KdhnVK8mSc/IL/CLWo8te3R40asSVv+ft5IdTVJ8t2qTqJpLrECLuc7NBSQLXV4dKO2jLY12j7Tg179E1VfkygR0uzrW9F3vkMfmuO0XbhhgoctBnb/CdbR6++GFOhlpZkqCI9BWqX/ysGHh8Lnbt6uUyfIHpMzXdExlwnsfbxHmcaKj+SxZyTwrbdBVJjGjp4oSfuhvIwv8oDt6N01nNhNVVSlox8IrDF6QGY4rVQp+KEqzS9GsVbl3y1esokycpl2QIDaVvFMZUbdoqdLwvVb7vjJWpIajR1V9HnWhMhFdaBYDt1oK8AyB2jS06Ktq2ZO7DqT98bAj36HuR6WbFOYMfJMidm11L9WSIj1pHG/7yv5on7QpDQkDM7cGE/Ol5cGSfGFUdKpRjc2Q56vf7J2DulntAMqyCCpd1Qe3GLv2L0DcI24OtPdeTMlbTgBvArj45OA8PT5HwTguyjCvo8TiOKrtumhPJwa1iAems+wooQg+d1ZkI8pfrgJawLmuEifTfSDFBAzt1fJAL7VDr1fgEaoKFR1kUsXCKMg+snFNQNntEPPCLYxxkvaosovlKDTnBbQTooFWVP0UFjOS0y+Tnu/2MlCuWU8N16Vv+7z9EGMjrvHymzhR9QPX0BzyE2JO52mELgZYd+WOrS+BdAWBCsn19A5bAYbVyOOUqtgo2QeqdGtwPCq/iskid7d41l8HZ32yaBi/p2XvKj0a9f32cI+hNXeZurgTmomHA2ZGbaIBnf7wwMzHqfSoetrQ5cf4FxEUbz8v8kFAwPvaraDwDIPltHeADZtIdsKKzvq0enIgXiLbtvRhE6uTKZukzP8u1EvIUz33L4X1fmd44VCUn8Tztjv5in9PZzBqxqLq3/mZUK8V/QZQagQLekfuw9/kOafFKIu13+h70+7HTFdjVhjyziIEmJgj4I/v2Q8EBSRdICGeFQQcOKVodCYu/jgK+ZX3MP+qrNTdfFGQZu58uTkTKaQoE5GmLa6sbMOlLufHseb15tKAyRAYgi892E/W1qzkRYRYH0Mr+jQLP4XCycc/zhA1JUrmqw22Fks7SG2OBaJz4elFwfQL3Tlscb1P4U5qPWX2AbZv5quqNcZ/s59iRqDWnJ29awux9OkoNDnhL8CCAdysv1/DSvVgsThNtGrUZtGBVS/EbxMe+gVN30hRu/TY57HUNJASAJE90Ay+ZK/fTYHsIYFvZ86GsSIqibSztysFIenhaq2EXXYK2e7Pn3H6E79bw5veVhafPrGzTwCcI2jNTXgky+fy/ANaukHhYCCmUn+nLW6lbg4Ce/Wtx+2tsxCDefKirN41zptGIHPmF2mUoyUCc/bzlU4qyQmasNAG9nyuoge/lInkb2nUCR62YShOFJeZr15FG57MoLSSqNpXr9kYRxZk6o14dePXCf+/OwcSbvik+r3QmX/8Kl38faHY6WR/ykYK/Io4pR5QoNVicWEodexNcX8WkrlLyKOTkwh+i+CeTdu5x8YrunlVetWE0zInL90Xs+OhpiSXR6i2CZDSJK6POHJVzndoGJpIRRHaCgHt3BOt3iJlGiHIul297l8tNuRtsLZRDF0eNfv/k/LyL4vwo4kf7BruH+EGMOkZbQGWw2RNctDcIfYN0CKnJzbvDl6JRF8BuUa22C25z1PUGPdx2bWGt/PE9GnQaXxAsLNwqjlYccqmuBIl8Le6LhOzpt1sn4QA8zFviQ9kZCHo0NvCTvoCK0dUp7VlVDdakmpZG4WpNW5YhwY5ZgUWAT202awCQjOD4ZppLKtS3vDv4PT6GmiMO0t1+UlzG3q/jBM0Cmk/wAwBCMF5DFkK3EwHBStE/RevngFBKe+zAVS9IZ2YaRHtLKcE6ULwA4KJEaK67eVqxOgqYdoUjLxZFRVK0JiYJAPFs06HUkPcgDOMnuWspPRkbiepEJUutaSItMDZdzxe4jBvqzik4X6iv8fm8a3W/uGXABazWogeQQeHX+DxDWHf0EPZtAtQRsJ/9LB7eq0PAVgJ2sIxIaTfed4jjMYwgoVLcn9eGl9Q5k5dP3wEfAD5/ik1k5mJj39wwBgRwapHZkYaR/8Riq8L3F2x4S3dT/OIlQHw32IDlO6Q3uWpkswNZQ/tFQZ9R9jDPGmN4bVPdVu+91k0oKnEBQUmOxPaOs3BiJ0Dt48OtXbY2RuEOOAGrA0aGF2K0OgObSo7sZNgCU4Xix3xCSu9t/3pJ8McxMhtil2760lqF5CfuoawFpLb2Ms6BL69ttD5f1xsN1MOADT7yGH/lpq6grgkj18UdgdYD3Jk3mXXDPSP+hUev4Rrz3EcprsjhIx92s2HBxbsqtrfY2UokOONdFLyzuxe6E8vevsSg2OunRIzNJTQoITQP2L0APfzhhNFccagXIoC5h6qOv+acSiKXssEhIK/zOSPZKNmX/PKkm9xFWlRPe97ZctCzFuoQYvmBesIoiN1nkDGxJBqZqhS5ODh2isoESfVjyROk1rJCjobxfCe3m1FGQThdUDcWmKbzZjcvvvD55lEHa642k7DUlR5Oi6MefiZaOLfzL8hfFBxVU42El2zZBq7yw/pMUw6rq5sO2gXTvBvUTr7VGd66v3RirrJK+LWKO5bpjy+kJ21sw+/uhs9iZU+WfvkFJTXKmT8GLMlyzwkRf21fTIe4fERu4Ueh4Tn15A1AF9koNji7fmzcImedo2gapJmAtbl3hYF8ml7BnWJYGwqLFhkn6D46Kh8pJwzTJhCJWEnVfDfYpyrmJN2idgs5lvVEewDnlDL9jhhn06JYKH0D97OJJmyxCrT32X1+9/ybLs7+rh3vjuGvKdDEDP3rrNdohO4v/NWSpvBODLuatmrAE48xgB/+UP//8mU//yW7//8k5YnDlM2tweycn366ui8muFL7LfmAAAAAAAAAAAAAAA==">
     <span class="titulo-sep"></span>
-    <span class="titulo-modo"><span class="punto-vivo"></span><span id="titulo-modo-texto">LIVE</span></span>
+    <span class="titulo-modo"><span class="punto-vivo"></span><span id="titulo-modo-texto">En vivo</span></span>
   </div>
 </div>
 
@@ -427,7 +475,7 @@
 
   <div class="menu-cuerpo" id="menu-cuerpo">
     <div class="selector-modo">
-      <button class="modo activo" id="modo-tiempo-real" onclick="cambiarVista('tiempo-real')">📍 Tiempo Real</button>
+      <button class="modo activo" id="modo-tiempo-real" onclick="cambiarVista('tiempo-real')">📍 En vivo</button>
       <button class="modo" id="modo-historicos" onclick="cambiarVista('historicos')">🕐 Históricos</button>
     </div>
 
@@ -441,13 +489,19 @@
         </div>
 
         <div class="panel" id="panel-fecha" hidden>
-          <label for="filtro-inicio">Inicio (fecha y hora)</label>
+          <div class="atajos" role="group" aria-label="Atajos de fecha">
+            <button type="button" class="atajo" data-preset="hoy" onclick="elegirPreset('hoy')">Hoy</button>
+            <button type="button" class="atajo" data-preset="ayer" onclick="elegirPreset('ayer')">Ayer</button>
+            <button type="button" class="atajo" data-preset="7d" title="Últimos 7 días" aria-label="Últimos 7 días" onclick="elegirPreset('7d')">7 días</button>
+            <button type="button" class="atajo" data-preset="todo" title="Todo el historial" aria-label="Todo el historial" onclick="elegirPreset('todo')">Todo</button>
+          </div>
+          <label for="filtro-inicio">Desde (fecha y hora)</label>
           <input type="datetime-local" id="filtro-inicio">
-          <label for="filtro-fin">Fin (fecha y hora)</label>
+          <label for="filtro-fin">Hasta (fecha y hora)</label>
           <input type="datetime-local" id="filtro-fin">
+          <p class="ayuda-chica">Elige un atajo o cambia las fechas: la lista se actualiza sola.</p>
           <div class="fila-botones">
-            <button class="btn btn-principal" onclick="aplicarFiltroFecha()">Filtrar</button>
-            <button class="btn btn-secundario" onclick="limpiarFiltros()">Limpiar</button>
+            <button class="btn btn-secundario" onclick="elegirTipoFiltro('fecha')">Quitar filtro</button>
           </div>
           <div class="aviso" id="aviso-fecha"></div>
         </div>
@@ -463,7 +517,9 @@
 
         <div class="cabecera-resultados">
           <span class="etiqueta-resultados" id="etiqueta-resultados">Últimas 4 rutas</span>
+          <span class="contador-resultados" id="contador-resultados" aria-live="polite"></span>
           <button class="accion-lista" id="accion-lista" onclick="restaurarLista()" hidden>Ver todas</button>
+          <button class="accion-lista" id="accion-ocultas" onclick="mostrarRutasOcultas()" hidden>Mostrar ocultas</button>
         </div>
         <div class="lista-recorridos" id="lista-recorridos"></div>
         <button class="btn btn-secundario btn-ver-todas" id="btn-ver-todas" onclick="alternarTodasLasRutas()" hidden>Ver todas las rutas registradas</button>
@@ -476,6 +532,7 @@
         <div class="tarjeta-recorrido tarjeta-detalle" id="detalle-tarjeta">
           <div class="tarjeta-linea"><span class="tarjeta-etq"><i class="punto-color" style="background:#0F766E"></i>Desde</span><span class="tarjeta-val" id="detalle-desde">—</span></div>
           <div class="tarjeta-linea"><span class="tarjeta-etq"><i class="punto-color" style="background:#C2410C"></i>Hasta</span><span class="tarjeta-val" id="detalle-hasta">—</span></div>
+          <div class="tarjeta-datos" id="detalle-datos"></div>
         </div>
 
         <div class="punto-info" id="punto-info" hidden>
@@ -491,13 +548,13 @@
         </div>
 
         <div class="panel" id="sub-panel-tiempo" hidden>
+          <p class="ayuda-chica">Cambia las horas y el tramo se resalta solo.</p>
           <label for="sub-inicio">Desde (fecha y hora)</label>
           <input type="datetime-local" id="sub-inicio">
           <label for="sub-fin">Hasta (fecha y hora)</label>
           <input type="datetime-local" id="sub-fin">
           <div class="fila-botones">
-            <button class="btn btn-principal" onclick="aplicarSubTiempo()">Aplicar</button>
-            <button class="btn btn-secundario" onclick="limpiarResultadosSub(true)">Quitar</button>
+            <button class="btn btn-secundario" onclick="quitarSubTiempo()">Quitar</button>
           </div>
         </div>
 
@@ -621,6 +678,84 @@
   var COLORES_RUTA = ['#E4572E', '#2E86AB', '#3B7D23', '#F2A900', '#7A3E9D',
                       '#17BEBB', '#C2185B', '#8D6E63', '#5C6BC0', '#607D8B'];
 
+  // ---- Lo esencial de una ruta (tarjetas de la lista y del detalle) ----
+
+  var MESES_CORTOS = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
+  function dos(n) { return (n < 10 ? '0' : '') + n; }
+
+  // 'AAAA-MM-DD' del día de hoy en el navegador (+ desplazamiento en días).
+  function fechaLocalTexto(desplazDias) {
+    var d = new Date();
+    d.setDate(d.getDate() + (desplazDias || 0));
+    return d.getFullYear() + '-' + dos(d.getMonth() + 1) + '-' + dos(d.getDate());
+  }
+
+  // 'AAAA-MM-DD' -> 'Hoy' | 'Ayer' | '14 oct' | '14 oct 2025'
+  function etiquetaDia(fecha) {
+    if (!fecha) { return '—'; }
+    if (fecha === fechaLocalTexto(0)) { return 'Hoy'; }
+    if (fecha === fechaLocalTexto(-1)) { return 'Ayer'; }
+    var p = fecha.split('-');
+    var txt = parseInt(p[2], 10) + ' ' + MESES_CORTOS[parseInt(p[1], 10) - 1];
+    return p[0] === fechaLocalTexto(0).slice(0, 4) ? txt : txt + ' ' + p[0];
+  }
+
+  // El texto de la hora ya viene en hora de Colombia: se separa como texto
+  // (sin pasarlo por Date, que lo movería a la zona horaria del navegador).
+  function partesFecha(iso) {
+    if (!iso) { return { fecha: '', hora: '—' }; }
+    var t = iso.split('T');
+    return { fecha: t[0], hora: (t[1] || '00:00').slice(0, 5) };
+  }
+
+  // "Hoy  10:05 – 10:18"  (si cruza la medianoche: "10 oct  23:50 – Ayer 00:20")
+  function htmlTituloRuta(r) {
+    var a = partesFecha(r.hora_recepcion_inicio), b = partesFecha(r.hora_recepcion_fin);
+    var rango = a.fecha === b.fecha ? a.hora + ' – ' + b.hora : a.hora + ' – ' + etiquetaDia(b.fecha) + ' ' + b.hora;
+    return '<b>' + etiquetaDia(a.fecha) + '</b><span>' + rango + '</span>';
+  }
+
+  // Date.parse con fracciones de segundo largas ("…:00.123456-05:00") falla en algunos
+  // navegadores: se recortan a milisegundos antes de convertir.
+  function instanteMs(iso) {
+    return iso ? Date.parse(String(iso).replace(/(\.\d{3})\d+/, '$1')) : NaN;
+  }
+  function duracionRutaMs(r) {
+    var a = instanteMs(r.hora_recepcion_inicio), b = instanteMs(r.hora_recepcion_fin);
+    return (isNaN(a) || isNaN(b)) ? null : Math.max(0, b - a);
+  }
+  function textoDuracion(ms) {
+    if (ms === null) { return '—'; }
+    var min = Math.round(ms / 60000);
+    if (min < 1) { return '<1 min'; }
+    if (min < 60) { return min + ' min'; }
+    var h = Math.floor(min / 60), m = min % 60;
+    if (h < 24) { return h + ' h' + (m ? ' ' + dos(m) + ' min' : ''); }
+    return Math.floor(h / 24) + ' d ' + (h % 24) + ' h';
+  }
+  function textoDistancia(m) {
+    if (m === undefined || m === null) { return '—'; }
+    if (m < 1000) { return Math.round(m) + ' m'; }
+    var km = m / 1000;
+    return String(km >= 100 ? Math.round(km) : km.toFixed(1)).replace('.', ',') + ' km';
+  }
+  // Velocidad media = distancia / duración (incluye las paradas). Con muy
+  // poco recorrido o tiempo no tiene sentido, y se deja en "—".
+  function textoVelocidadMedia(m, ms) {
+    if (m === undefined || m === null || ms === null || ms < 60000 || m < 50) { return '—'; }
+    return Math.round((m / 1000) / (ms / 3600000)) + ' km/h';
+  }
+  function htmlDatosRuta(r) {
+    var ms = duracionRutaMs(r);
+    return '<div><b>' + textoDuracion(ms) + '</b><span>Duración</span></div>' +
+           '<div><b>' + textoDistancia(r.distancia_m) + '</b><span>Distancia</span></div>' +
+           '<div><b>' + textoVelocidadMedia(r.distancia_m, ms) + '</b><span>Vel. media</span></div>';
+  }
+
+  var ATRIBUTOS_ICONO = 'width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"';
+  var SVG_OJO = '<svg ' + ATRIBUTOS_ICONO + '><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>';
+  var SVG_OJO_TACHADO = '<svg ' + ATRIBUTOS_ICONO + '><path d="M3 3l18 18"/><path d="M10.6 5.1A10.7 10.7 0 0 1 12 5c6.4 0 10 7 10 7a17 17 0 0 1-3.2 4.2M6.6 6.6A16.7 16.7 0 0 0 2 12s3.6 7 10 7a9.7 9.7 0 0 0 4.4-1"/><path d="M9.9 9.9a3 3 0 0 0 4.2 4.2"/></svg>';
+
   // =====================================================================
   // 2. MENÚ LATERAL Y CAMBIO ENTRE TIEMPO REAL / HISTÓRICOS
   // =====================================================================
@@ -644,7 +779,7 @@
     document.body.classList.toggle('modo-historicos', hist);
     porId('modo-tiempo-real').classList.toggle('activo', !hist);
     porId('modo-historicos').classList.toggle('activo', hist);
-    porId('titulo-modo-texto').textContent = hist ? 'Históricos' : 'LIVE';
+    porId('titulo-modo-texto').textContent = hist ? 'Históricos' : 'En vivo';
     porId('seccion-historicos').hidden = !hist;
 
     if (hist) {
@@ -687,12 +822,63 @@
   var marcador = null;
 
   // La línea del recorrido en curso — empieza vacía y se va llenando.
-  var linea = L.polyline([], {
-    color: '#0B1F3A',
-    weight: 4,
-    opacity: 0.85,
-    lineJoin: 'round'
+  // Son DOS líneas superpuestas: un contorno blanco debajo y el color de
+  // la marca encima. Así se distingue bien sobre cualquier fondo (calles,
+  // parques, agua) y sobre el gris del mapa.
+  var lineaContorno = L.polyline([], {
+    color: '#FFFFFF', weight: 13, opacity: 0.95, lineJoin: 'round', lineCap: 'round', interactive: false
   }).addTo(mapa);
+  var linea = L.polyline([], {
+    color: '#1565D8', weight: 8, opacity: 1, lineJoin: 'round', lineCap: 'round', interactive: false
+  }).addTo(mapa);
+
+  // Flechitas que indican hacia dónde va el camión. Se recalculan cuando
+  // llega un punto nuevo y cuando cambia el zoom (se reparten cada
+  // SEPARACION_FLECHAS_PX píxeles a lo largo de la línea).
+  var SEPARACION_FLECHAS_PX = 90;
+  var capaFlechas = L.layerGroup().addTo(mapa);
+  var coordsRecorrido = [];
+  var firmaRecorrido = '';
+
+  function dibujarFlechas() {
+    capaFlechas.clearLayers();
+    if (coordsRecorrido.length < 2) { return; }
+    var z = mapa.getZoom();
+
+    // Puntos en píxeles absolutos del zoom actual; los que quedan a menos
+    // de 8 px del anterior se descartan (el "temblor" del GPS con el camión
+    // quieto haría girar las flechas en todas direcciones).
+    var P = [];
+    coordsRecorrido.forEach(function (c, i) {
+      var p = mapa.project(c, z);
+      if (P.length === 0 || i === coordsRecorrido.length - 1 || p.distanceTo(P[P.length - 1]) >= 8) { P.push(p); }
+    });
+
+    var falta = SEPARACION_FLECHAS_PX / 2, puestas = 0, MAXIMO = 300;
+    for (var i = 1; i < P.length && puestas < MAXIMO; i++) {
+      var dx = P[i].x - P[i - 1].x, dy = P[i].y - P[i - 1].y;
+      var largo = Math.sqrt(dx * dx + dy * dy);
+      if (largo === 0) { continue; }
+      var grados = Math.atan2(dy, dx) * 180 / Math.PI;      // en pantalla: 0° = hacia el este, 90° = hacia el sur
+      var usado = 0;
+      while (largo - usado >= falta && puestas < MAXIMO) {
+        usado += falta;
+        var punto = L.point(P[i - 1].x + dx * usado / largo, P[i - 1].y + dy * usado / largo);
+        L.marker(mapa.unproject(punto, z), {
+          interactive: false, keyboard: false, zIndexOffset: -500,
+          icon: L.divIcon({
+            className: 'flecha-ruta', iconSize: [20, 20], iconAnchor: [10, 10],
+            html: '<svg width="20" height="20" viewBox="-10 -10 20 20" style="transform:rotate(' + grados.toFixed(0) + 'deg)">' +
+                  '<path d="M-3.6 -5 L3.2 0 L-3.6 5" fill="none" stroke="#FFFFFF" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round"/></svg>'
+          })
+        }).addTo(capaFlechas);
+        falta = SEPARACION_FLECHAS_PX;
+        puestas++;
+      }
+      falta -= (largo - usado);
+    }
+  }
+  mapa.on('zoomend', dibujarFlechas);
 
   function destellar(id) {
     var caja = porId(id);
@@ -741,7 +927,14 @@
       .then(function (respuesta) { return respuesta.json(); })
       .then(function (puntos) {
         var coordenadas = puntos.map(function (p) { return [p.lat, p.lon]; });
+        var ultimo = coordenadas.length ? coordenadas[coordenadas.length - 1] : null;
+        var firma = coordenadas.length + ':' + (ultimo ? ultimo[0] + ',' + ultimo[1] : '');
+        if (firma === firmaRecorrido) { return; }          // no llegó nada nuevo: no se redibuja
+        firmaRecorrido = firma;
+        coordsRecorrido = coordenadas;
+        lineaContorno.setLatLngs(coordenadas);
         linea.setLatLngs(coordenadas);
+        dibujarFlechas();
       })
       .catch(function (e) { console.error(e); });
   }
@@ -794,9 +987,16 @@
   var tokenBusqueda = 0;          // evita que una respuesta lenta pise a una más nueva
   var rutasActuales = [];         // resúmenes de las rutas que se están mostrando
   var ETIQUETA_ULTIMAS = 'Últimas 4 rutas';      // rótulo de la primera vista de Históricos
+  var ETIQUETA_TODAS = 'Todas las rutas registradas';
   var etiquetaBase = ETIQUETA_ULTIMAS, vacioBase = '';
   var subconjuntoActivo = false;  // ¿la lista muestra solo las rutas de un trayecto coincidente?
   var colorPorId = {}, puntosPorId = {}, horasPorId = {}, lineasPorId = {};
+  var rutasOcultas = {};          // { id_recorrido: true } rutas apagadas con el "ojo" de su tarjeta
+  var rangoDatos = null;          // { min, max, total } según /recorridos_rango (total = rutas registradas)
+  var listaCargada = false;       // ¿ya llegaron los resultados de la búsqueda actual?
+  // Tolerancia (metros) con que el servidor simplifica cada ruta para dibujarla: solo
+  // se quitan los puntos que quedan sobre la recta entre sus vecinos, así las curvas se respetan.
+  var TOLERANCIA_LINEA_M = 3;
 
   var rutaSel = null;             // { resumen, puntos, color } de la ruta abierta en el detalle
   var lineaDetalle = null, marcadorInicio = null, marcadorFin = null, marcadorSlider = null;
@@ -835,6 +1035,8 @@
   // El calendario no deja escoger fechas sin datos.
   function cargarRangoFechas() {
     pedirJSON('/recorridos_rango').then(function (rg) {
+      rangoDatos = rg;
+      refrescarCabeceraLista();          // ya se sabe cuántas rutas hay en total: "4 de 37"
       ['filtro-inicio', 'filtro-fin'].forEach(function (id) {
         var campo = porId(id);
         if (rg.min && rg.max) {
@@ -885,28 +1087,57 @@
   // últimas 4" debajo de la lista: alterna entre los dos según cuál
   // esté mostrando ahora mismo (etiquetaBase).
   function alternarTodasLasRutas() {
-    if (etiquetaBase === 'Todas las rutas registradas') {
+    if (etiquetaBase === ETIQUETA_TODAS) {
       mostrarUltimasRutas();
     } else {
-      cargarResultados('/recorridos?limite=todas', 'Todas las rutas registradas', 'Todavía no hay rutas registradas.');
+      cargarResultados('/recorridos?limite=todas', ETIQUETA_TODAS, 'Todavía no hay rutas registradas.');
     }
   }
 
   // Muestra/oculta y rotula ese botón. Solo tiene sentido en las dos
   // vistas "sin filtro real" (últimas rutas / todas); con un filtro de
   // fecha o zona aplicado, o con un subconjunto de rutas coincidentes,
-  // se oculta.
+  // se oculta. En "últimas rutas" lleva el total entre paréntesis, y si
+  // ya se están viendo todas las que hay, no se muestra.
   function actualizarBotonVerTodas(etiqueta) {
     var btn = porId('btn-ver-todas');
-    if (etiqueta === ETIQUETA_ULTIMAS) {
-      btn.hidden = false;
-      btn.textContent = 'Ver todas las rutas registradas';
-    } else if (etiqueta === 'Todas las rutas registradas') {
+    var total = totalRegistradas();
+    if (subconjuntoActivo) {
+      btn.hidden = true;
+    } else if (etiqueta === ETIQUETA_ULTIMAS) {
+      btn.hidden = (listaCargada && total !== null && total <= rutasActuales.length);
+      btn.textContent = 'Ver todas las rutas registradas' + (total !== null ? ' (' + total + ')' : '');
+    } else if (etiqueta === ETIQUETA_TODAS) {
       btn.hidden = false;
       btn.textContent = 'Mostrar solo las últimas 4';
     } else {
       btn.hidden = true;
     }
+  }
+
+  function totalRegistradas() {
+    return (rangoDatos && typeof rangoDatos.total === 'number') ? rangoDatos.total : null;
+  }
+
+  // Contador junto al rótulo de la lista ("4 de 37 rutas") y los botones
+  // de la cabecera. Se vuelve a calcular cada vez que cambia la lista, el
+  // subconjunto, las rutas ocultas o llega el total de rutas del servidor.
+  function refrescarCabeceraLista() {
+    var texto = '';
+    if (listaCargada) {
+      var n = rutasActuales.length, total = totalRegistradas();
+      var a = subconjuntoActivo ? idsDelSubconjunto.length : n;
+      var b = subconjuntoActivo ? n : ((total !== null && total > n) ? total : null);
+      texto = (b !== null && b > a) ? a + ' de ' + b + ' rutas' : a + (a === 1 ? ' ruta' : ' rutas');
+    }
+    porId('contador-resultados').textContent = texto;
+
+    var ocultas = Object.keys(rutasOcultas).length;
+    var btnOcultas = porId('accion-ocultas');
+    btnOcultas.hidden = ocultas === 0;
+    btnOcultas.textContent = 'Mostrar ocultas (' + ocultas + ')';
+
+    actualizarBotonVerTodas(etiquetaBase);
   }
 
   // Pide una lista de rutas al servidor, la muestra como tarjetas y
@@ -934,10 +1165,14 @@
     subconjuntoActivo = false;
     porId('etiqueta-resultados').textContent = etiqueta;
     porId('accion-lista').hidden = true;
-    actualizarBotonVerTodas(etiqueta);
     if (!opciones.suave) {
+      rutasOcultas = {};
+      listaCargada = false;
+      refrescarCabeceraLista();
       limpiarDibujoResultados();
       porId('lista-recorridos').innerHTML = '<div class="lista-vacia">Cargando…</div>';
+    } else {
+      actualizarBotonVerTodas(etiqueta);
     }
 
     pedirJSON(url).then(function (lista) {
@@ -945,7 +1180,13 @@
       rutasActuales = lista;
       colorPorId = {};
       lista.forEach(function (r, i) { colorPorId[r.id_recorrido] = COLORES_RUTA[i % COLORES_RUTA.length]; });
+      // Una ruta que ya no está en el resultado (al mover la zona) deja de contar como oculta.
+      var presentes = {};
+      lista.forEach(function (r) { presentes[r.id_recorrido] = true; });
+      Object.keys(rutasOcultas).forEach(function (id) { if (!presentes[id]) { delete rutasOcultas[id]; } });
+      listaCargada = true;
       renderizarTarjetas(lista, mensajeVacio);
+      refrescarCabeceraLista();
       dibujarRutasEnMapa(lista, token, opciones);
       if (opciones.avisar) {
         mostrarAvisoMapa(lista.length === 0 ? mensajeVacio
@@ -980,15 +1221,70 @@
       tarjeta.dataset.id = r.id_recorrido;
       tarjeta.style.borderLeftColor = colorPorId[r.id_recorrido] || '#A7B1BE';
       tarjeta.title = r.num_puntos + ' puntos';
+      // Arriba: cuándo fue. Abajo: lo que más se pregunta de una ruta
+      // (duración, distancia, velocidad media), en vez de repetir Desde/Hasta.
       tarjeta.innerHTML =
-        '<div class="tarjeta-linea"><span class="tarjeta-etq">Desde</span><span class="tarjeta-val">' + fechaCorta(r.hora_recepcion_inicio) + '</span></div>' +
-        '<div class="tarjeta-linea"><span class="tarjeta-etq">Hasta</span><span class="tarjeta-val">' + fechaCorta(r.hora_recepcion_fin) + '</span></div>';
+        '<div class="tarjeta-cabecera"><div class="tarjeta-titulo">' + htmlTituloRuta(r) + '</div>' +
+        (lista.length > 1 ? '<button type="button" class="ojo"></button>' : '') + '</div>' +
+        '<div class="tarjeta-datos">' + htmlDatosRuta(r) + '</div>';
+      var ojo = tarjeta.querySelector('.ojo');
+      if (ojo) {
+        // El ojo oculta/muestra esta ruta en el mapa; no abre la ruta (por eso se corta el clic).
+        ojo.addEventListener('click', function (e) { e.stopPropagation(); alternarRutaOculta(r.id_recorrido); });
+        ojo.addEventListener('keydown', function (e) { e.stopPropagation(); });
+      }
+      pintarEstadoOjo(tarjeta, r.id_recorrido);
       tarjeta.addEventListener('click', function () { seleccionarRecorrido(r.id_recorrido); });
       tarjeta.addEventListener('keydown', function (e) { if (e.key === 'Enter') { seleccionarRecorrido(r.id_recorrido); } });
       tarjeta.addEventListener('mouseenter', function () { resaltarRutas([r.id_recorrido]); });
       tarjeta.addEventListener('mouseleave', function () { restaurarResaltado(); });
+      tarjeta.addEventListener('focus', function () { resaltarRutas([r.id_recorrido]); });
+      tarjeta.addEventListener('blur', function () { restaurarResaltado(); });
       contenedor.appendChild(tarjeta);
     });
+  }
+
+  // ---- Ocultar / mostrar rutas con el "ojo" ----
+
+  function pintarEstadoOjo(tarjeta, id) {
+    var oculta = !!rutasOcultas[id];
+    tarjeta.classList.toggle('oculta', oculta);
+    var ojo = tarjeta.querySelector('.ojo');
+    if (!ojo) { return; }
+    var texto = oculta ? 'Mostrar esta ruta en el mapa' : 'Ocultar esta ruta del mapa';
+    ojo.innerHTML = oculta ? SVG_OJO_TACHADO : SVG_OJO;
+    ojo.title = texto;
+    ojo.setAttribute('aria-label', texto);
+    ojo.setAttribute('aria-pressed', oculta ? 'true' : 'false');
+  }
+
+  function pintarTodosLosOjos() {
+    Array.prototype.forEach.call(porId('lista-recorridos').querySelectorAll('.tarjeta-recorrido'), function (t) {
+      pintarEstadoOjo(t, t.dataset.id);
+    });
+  }
+
+  function alternarRutaOculta(id) {
+    if (rutasOcultas[id]) { delete rutasOcultas[id]; } else { rutasOcultas[id] = true; }
+    pintarTodosLosOjos();
+    aplicarVisibilidadRutas();
+  }
+
+  function mostrarRutasOcultas() {
+    rutasOcultas = {};
+    pintarTodosLosOjos();
+    aplicarVisibilidadRutas();
+  }
+
+  // Quita del mapa las líneas de las rutas ocultas (y sus tramos resaltados) y vuelve a poner las demás.
+  function aplicarVisibilidadRutas() {
+    Object.keys(lineasPorId).forEach(function (id) {
+      var linea = lineasPorId[id];
+      if (rutasOcultas[id]) { if (capaRutas.hasLayer(linea)) { capaRutas.removeLayer(linea); } }
+      else if (!capaRutas.hasLayer(linea)) { capaRutas.addLayer(linea); }
+    });
+    resaltarTramosDelFiltro();
+    refrescarCabeceraLista();
   }
 
   // Trae la geometría de todas las rutas de la lista en UNA sola
@@ -1001,11 +1297,12 @@
       return;
     }
     var ids = lista.map(function (r) { return r.id_recorrido; });
-    var maxPuntos = Math.max.apply(null, lista.map(function (r) { return r.num_puntos; }));
-    // Para una vista general no hace falta cada punto: ~300 por ruta basta.
-    var paso = Math.max(1, Math.ceil(maxPuntos / 300));
 
-    pedirJSON('/puntos_recorridos?ids=' + encodeURIComponent(ids.join(',')) + '&paso=' + paso).then(function (porRuta) {
+    // Para una vista general no hace falta cada punto: el servidor quita los
+    // que quedan sobre la recta entre sus vecinos (Douglas-Peucker). Antes se
+    // dejaba "1 de cada N", y en una curva eso corta la esquina: la línea
+    // parecía atravesar las manzanas en vez de seguir la calle.
+    pedirJSON('/puntos_recorridos?ids=' + encodeURIComponent(ids.join(',')) + '&tol=' + TOLERANCIA_LINEA_M).then(function (porRuta) {
       if (token !== tokenBusqueda) { return; }
       if (opciones.suave) { limpiarDibujoResultados(); }      // recién ahora: sin parpadeo
       lista.forEach(function (r) {
@@ -1014,9 +1311,10 @@
         puntosPorId[r.id_recorrido] = datos.pts;
         horasPorId[r.id_recorrido] = datos.horas;
         lineasPorId[r.id_recorrido] = L.polyline(datos.pts, {
-          color: colorPorId[r.id_recorrido], weight: 5, opacity: 0.9, lineJoin: 'round',
+          color: colorPorId[r.id_recorrido], weight: 5, opacity: 0.9, lineJoin: 'round', lineCap: 'round',
           interactive: false        // los clics los atiende el mapa (ver alClicMapaHistorico)
-        }).addTo(capaRutas);
+        });
+        if (!rutasOcultas[r.id_recorrido]) { lineasPorId[r.id_recorrido].addTo(capaRutas); }
       });
       if (opciones.ajustar !== false) { ajustarAResultados(); }
       resaltarTramosDelFiltro();
@@ -1030,38 +1328,49 @@
   // una versión reducida de la ruta: por eso, al abrir una ruta en
   // concreto, el tramo se vuelve a calcular con toda su resolución
   // (ver heredarFiltroPrimario).
+  //
+  // Solo se dibuja el tramo cuando es PARTE de la ruta: si el filtro cubre la
+  // ruta completa (p. ej. "Todo" o "7 días"), resaltarla entera no aporta nada
+  // y llenaría el mapa de halos. Las rutas ocultas con el ojo no se dibujan.
+  // Cuando hay tramos resaltados, las líneas base se afinan y se aclaran para
+  // que los tramos sean lo que se vea (ver restaurarResaltado).
   function resaltarTramosDelFiltro() {
     capaTramosResultado.clearLayers();
     if (tipoFiltro === 'zona' && zonaP.centro) {
       rutasActuales.forEach(function (r) {
         var pts = puntosPorId[r.id_recorrido];
-        if (!pts) { return; }
+        if (!pts || rutasOcultas[r.id_recorrido]) { return; }
         pasadasEnArray(pts, zonaP.centro.lat, zonaP.centro.lng, zonaP.radio).forEach(function (p) {
-          dibujarTramoEnCapa(capaTramosResultado, pts.slice(p.desde, p.hasta + 1), colorPorId[r.id_recorrido]);
+          if (p.desde === 0 && p.hasta === pts.length - 1) { return; }
+          dibujarTramoEnCapa(capaTramosResultado, pts.slice(p.desde, p.hasta + 1), colorPorId[r.id_recorrido], true);
         });
       });
     } else if (tipoFiltro === 'fecha') {
       var desde = porId('filtro-inicio').value;
       var finCampo = porId('filtro-fin').value;
-      if (!desde && !finCampo) { return; }
-      var hasta = finCampo ? finCampo + ':59.999999' : '\uffff';
-      rutasActuales.forEach(function (r) {
-        var pts = puntosPorId[r.id_recorrido], horas = horasPorId[r.id_recorrido];
-        if (!pts || !horas) { return; }
-        var rango = rangoFechaEnArray(horas, desde || '', hasta);
-        if (rango) { dibujarTramoEnCapa(capaTramosResultado, pts.slice(rango.desde, rango.hasta + 1), colorPorId[r.id_recorrido]); }
-      });
+      if (desde || finCampo) {
+        var hasta = finCampo ? finCampo + ':59.999999' : '￿';
+        rutasActuales.forEach(function (r) {
+          var pts = puntosPorId[r.id_recorrido], horas = horasPorId[r.id_recorrido];
+          if (!pts || !horas || rutasOcultas[r.id_recorrido]) { return; }
+          var rango = rangoFechaEnArray(horas, desde || '', hasta);
+          if (!rango || (rango.desde === 0 && rango.hasta === pts.length - 1)) { return; }
+          dibujarTramoEnCapa(capaTramosResultado, pts.slice(rango.desde, rango.hasta + 1), colorPorId[r.id_recorrido], true);
+        });
+      }
     }
+    restaurarResaltado();
   }
 
   // Dibuja un tramo resaltado (línea gruesa con halo + marcadores en los
   // extremos) en la capa indicada, con las coordenadas [lat, lon] dadas.
-  // La comparten el resaltado de la lista (varias rutas) y el resaltado
-  // de una ruta abierta en el detalle (dibujarTramo).
-  function dibujarTramoEnCapa(capa, coords, color) {
+  // La comparten el resaltado de la lista (varias rutas, versión "fino":
+  // menos grueso para no tapar a las demás) y el resaltado de una ruta
+  // abierta en el detalle (dibujarTramo).
+  function dibujarTramoEnCapa(capa, coords, color, fino) {
     var base = { lineCap: 'round', lineJoin: 'round', interactive: false };
-    L.polyline(coords, Object.assign({ color: '#0B1F3A', weight: 16, opacity: 0.85 }, base)).addTo(capa);
-    L.polyline(coords, Object.assign({ color: color, weight: 8, opacity: 1 }, base)).addTo(capa);
+    L.polyline(coords, Object.assign({ color: '#0B1F3A', weight: fino ? 11 : 16, opacity: 0.85 }, base)).addTo(capa);
+    L.polyline(coords, Object.assign({ color: color, weight: fino ? 6 : 8, opacity: 1 }, base)).addTo(capa);
     var estilo = { radius: 7, color: '#0B1F3A', weight: 3, fillColor: '#E6E9EF', fillOpacity: 1, interactive: false };
     L.circleMarker(coords[0], estilo).addTo(capa);
     if (coords.length > 1) { L.circleMarker(coords[coords.length - 1], estilo).addTo(capa); }
@@ -1070,16 +1379,26 @@
 
   // Igual que calcularPasadas (más abajo), pero para puntos [lat, lon]
   // en vez de objetos {lat, lon}: los que trae la vista de lista.
+  // Esos puntos son una versión simplificada de la ruta (en una recta larga
+  // quedan lejos unos de otros), así que además de los puntos DENTRO del
+  // círculo se cuenta un segmento que lo cruza aunque sus dos extremos
+  // queden fuera: si no, una ruta que atraviesa una zona pequeña por una
+  // recta podría no aparecer resaltada.
   function pasadasEnArray(pts, lat, lon, radio) {
-    var pasadas = [], actual = null;
+    var pasadas = [], actual = null, dentroAntes = false;
     for (var i = 0; i < pts.length; i++) {
       var dentro = distanciaMetros(lat, lon, pts[i][0], pts[i][1]) <= radio;
+      var cruza = !dentro && !dentroAntes && i > 0 &&
+        distPuntoSegmentoM(lat, lon, pts[i - 1][0], pts[i - 1][1], pts[i][0], pts[i][1]) <= radio;
       if (dentro) {
         if (actual === null) { actual = { desde: i, hasta: i }; } else { actual.hasta = i; }
+      } else if (cruza) {
+        if (actual === null) { actual = { desde: i - 1, hasta: i }; } else { actual.hasta = i; }
       } else if (actual !== null) {
         pasadas.push(actual);
         actual = null;
       }
+      dentroAntes = dentro;
     }
     if (actual !== null) { pasadas.push(actual); }
     return pasadas;
@@ -1113,7 +1432,7 @@
     var k = 0;
     rutasActuales.forEach(function (r) {
       var linea = lineasPorId[r.id_recorrido];
-      if (!linea) { return; }
+      if (!linea || rutasOcultas[r.id_recorrido]) { return; }
       if (ids.indexOf(r.id_recorrido) >= 0) {
         var grosor = ids.length === 1 ? 8 : Math.max(4, 13 - 3 * k);
         k++;
@@ -1124,8 +1443,13 @@
       }
     });
   }
+  // Estilo normal de las líneas: si hay tramos resaltados por un filtro,
+  // las líneas base son finas y claras (el tramo es lo importante); si no,
+  // son más gruesas y fuertes.
   function quitarResaltado() {
-    Object.keys(lineasPorId).forEach(function (id) { lineasPorId[id].setStyle({ weight: 5, opacity: 0.9 }); });
+    var hayTramos = capaTramosResultado && capaTramosResultado.getLayers().length > 0;
+    var estilo = hayTramos ? { weight: 3, opacity: 0.35 } : { weight: 5, opacity: 0.9 };
+    Object.keys(lineasPorId).forEach(function (id) { if (!rutasOcultas[id]) { lineasPorId[id].setStyle(estilo); } });
   }
   function restaurarResaltado() {
     if (subconjuntoActivo) { resaltarRutas(idsDelSubconjunto); } else { quitarResaltado(); }
@@ -1141,9 +1465,60 @@
     porId('panel-zona').hidden = tipoFiltro !== 'zona';
     desarmar();
     limpiarFiltros();
+    // Al abrir el filtro por fecha ya hay un rango escrito (nunca campos
+    // vacíos) y la lista se filtra de una vez; solo hay que ajustarlo.
+    if (tipoFiltro === 'fecha') { elegirPreset(presetPorDefecto()); }
   }
 
+  // ---- Filtro por fecha ----
+  // Atajos (Hoy / Ayer / 7 días / Todo) que llenan los dos campos, y el
+  // filtro se aplica solo —al elegir un atajo y medio segundo después de
+  // cambiar cualquiera de los campos—, igual que el filtro por zona.
+
+  var presetFecha = null;             // 'hoy' | 'ayer' | '7d' | 'todo' | null (rango escrito a mano)
+  var temporizadorFecha = null;
+  var ETIQUETA_PRESET = { hoy: 'Rutas de hoy', ayer: 'Rutas de ayer', '7d': 'Últimos 7 días', todo: 'Todo el historial' };
+
+  // Al abrir el filtro: "7 días"; pero si lo último registrado es anterior a
+  // esa ventana, se parte de "Todo" para no mostrar una lista vacía.
+  function presetPorDefecto() {
+    if (rangoDatos && rangoDatos.max && rangoDatos.max.slice(0, 10) < fechaLocalTexto(-6)) { return 'todo'; }
+    return '7d';
+  }
+
+  function elegirPreset(nombre) {
+    var hoy = fechaLocalTexto(0), ini = '', fin = '';
+    if (nombre === 'hoy') { ini = hoy + 'T00:00'; fin = hoy + 'T23:59'; }
+    else if (nombre === 'ayer') { var ayer = fechaLocalTexto(-1); ini = ayer + 'T00:00'; fin = ayer + 'T23:59'; }
+    else if (nombre === '7d') { ini = fechaLocalTexto(-6) + 'T00:00'; fin = hoy + 'T23:59'; }
+    else if (rangoDatos && rangoDatos.min && rangoDatos.max) { ini = rangoDatos.min.slice(0, 16); fin = rangoDatos.max.slice(0, 16); }
+    else { ini = fechaLocalTexto(-30) + 'T00:00'; fin = hoy + 'T23:59'; }       // todavía no llega el rango del servidor
+    porId('filtro-inicio').value = ini;
+    porId('filtro-fin').value = fin;
+    presetFecha = nombre;
+    marcarAtajo();
+    aplicarFiltroFecha();
+  }
+
+  function marcarAtajo() {
+    Array.prototype.forEach.call(document.querySelectorAll('.atajo'), function (b) {
+      b.classList.toggle('activo', b.getAttribute('data-preset') === presetFecha);
+    });
+  }
+
+  // Cambiar a mano cualquiera de los campos: se deja de marcar el atajo y se filtra al medio segundo.
+  ['filtro-inicio', 'filtro-fin'].forEach(function (id) {
+    porId(id).addEventListener('input', function () {
+      presetFecha = null;
+      marcarAtajo();
+      clearTimeout(temporizadorFecha);
+      temporizadorFecha = setTimeout(aplicarFiltroFecha, 500);
+    });
+  });
+
   function aplicarFiltroFecha() {
+    clearTimeout(temporizadorFecha);
+    if (tipoFiltro !== 'fecha') { return; }
     var ini = porId('filtro-inicio').value, fin = porId('filtro-fin').value;
     var aviso = porId('aviso-fecha');
     aviso.textContent = '';
@@ -1152,7 +1527,8 @@
     var url = '/recorridos?limite=30' +
               (ini ? '&desde=' + encodeURIComponent(ini) : '') +
               (fin ? '&hasta=' + encodeURIComponent(fin) : '');
-    cargarResultados(url, 'Rutas en ese rango', 'No hay rutas en ese rango de tiempo.');
+    cargarResultados(url, ETIQUETA_PRESET[presetFecha] || 'Rutas en ese rango',
+                     'No hay rutas en ese rango de tiempo. Prueba con otro atajo o cambia las fechas.');
   }
 
   // ---- Filtro por zona ----
@@ -1168,17 +1544,18 @@
                      { suave: true, ajustar: false, avisar: true });
   }
 
-  // "Limpiar" (y cambiar de tipo de filtro): vuelve a las últimas 4 rutas.
+  // "Limpiar" de la zona (y cambiar de tipo de filtro): se borra el círculo y
+  // se vuelve a las últimas 4 rutas. Con el filtro por fecha activo no se
+  // toca nada de eso aquí: elegirTipoFiltro lo carga con el atajo por defecto.
   function limpiarFiltros() {
     cancelarBusquedasZona();
-    porId('filtro-inicio').value = '';
-    porId('filtro-fin').value = '';
+    clearTimeout(temporizadorFecha);
     porId('aviso-fecha').textContent = '';
     capaZona.clearLayers();
     zonaP.centro = null;
     zonaP.circulo = null;
     porId('ayuda-zona').textContent = AYUDA_COLOCAR;
-    mostrarUltimasRutas();
+    if (tipoFiltro !== 'fecha') { mostrarUltimasRutas(); }
     if (tipoFiltro === 'zona') { armarCentro('principal'); }
   }
 
@@ -1389,7 +1766,7 @@
     var aciertos = [];
     rutasActuales.forEach(function (r) {
       var pts = puntosPorId[r.id_recorrido];
-      if (!pts) { return; }
+      if (!pts || rutasOcultas[r.id_recorrido]) { return; }
       if (pts.length === 1) {
         if (distanciaMetros(latlng.lat, latlng.lng, pts[0][0], pts[0][1]) <= tol) { aciertos.push(r.id_recorrido); }
         return;
@@ -1414,8 +1791,8 @@
     resaltarRutas(ids);
     porId('etiqueta-resultados').textContent = 'Rutas que coinciden en este trayecto';
     porId('accion-lista').hidden = false;
-    porId('btn-ver-todas').hidden = true;
     renderizarTarjetas(rutasActuales.filter(function (r) { return ids.indexOf(r.id_recorrido) >= 0; }), '');
+    refrescarCabeceraLista();
     alternarMenu(true);
   }
 
@@ -1426,8 +1803,8 @@
     quitarResaltado();
     porId('etiqueta-resultados').textContent = etiquetaBase;
     porId('accion-lista').hidden = true;
-    actualizarBotonVerTodas(etiquetaBase);
     renderizarTarjetas(rutasActuales, vacioBase);
+    refrescarCabeceraLista();
   }
 
   // =====================================================================
@@ -1486,6 +1863,9 @@
     if (tipoFiltro === 'fecha') {
       var ini = porId('filtro-inicio').value, fin = porId('filtro-fin').value;
       if (!ini && !fin) { return; }
+      // Si el rango cubre la ruta completa (p. ej. con "Todo" o "7 días") no hay
+      // ningún tramo que resaltar: la ruta se abre normal, sin filtro dentro.
+      if (filtroCubreToda(rutaSel.puntos, ini, fin)) { return; }
       subTipo = 'tiempo';
       porId('sf-tiempo').classList.add('activo');
       porId('sub-panel-tiempo').hidden = false;
@@ -1508,10 +1888,20 @@
     }
   }
 
+  // ¿El rango de fechas del filtro abarca la ruta entera (de su primer a su último punto)?
+  function filtroCubreToda(puntos, ini, fin) {
+    if (!puntos || puntos.length === 0) { return true; }
+    var primera = puntos[0].hora_recepcion, ultima = puntos[puntos.length - 1].hora_recepcion;
+    if (ini && primera < ini) { return false; }
+    if (fin && ultima > fin + ':59.999999') { return false; }
+    return true;
+  }
+
   function rellenarResumen(r, color) {
     porId('detalle-tarjeta').style.borderLeftColor = color;
     porId('detalle-desde').textContent = fechaCorta(r.hora_recepcion_inicio);
     porId('detalle-hasta').textContent = fechaCorta(r.hora_recepcion_fin);
+    porId('detalle-datos').innerHTML = htmlDatosRuta(r);
   }
 
   function dibujarDetalle(puntos, color) {
@@ -1650,12 +2040,30 @@
     if (puntos.length === 0) { return; }
     var ini = puntos[0].hora_recepcion.slice(0, 16);
     var fin = puntos[puntos.length - 1].hora_recepcion.slice(0, 16);
+    // Los campos arrancan con el inicio y el fin de la ruta (nunca vacíos):
+    // basta con mover uno de los dos para acotar el tramo.
     ['sub-inicio', 'sub-fin'].forEach(function (id) {
       var campo = porId(id);
       campo.min = ini;
       campo.max = fin;
-      campo.value = '';
+      campo.value = (id === 'sub-inicio') ? ini : fin;
     });
+  }
+
+  // Igual que en el filtro por fecha de la lista: se aplica solo, medio segundo después de cambiar un campo.
+  var temporizadorSubTiempo = null;
+  ['sub-inicio', 'sub-fin'].forEach(function (id) {
+    porId(id).addEventListener('input', function () {
+      clearTimeout(temporizadorSubTiempo);
+      temporizadorSubTiempo = setTimeout(function () { if (subTipo === 'tiempo') { aplicarSubTiempo(); } }, 500);
+    });
+  });
+
+  // "Quitar": se borra el tramo y los campos vuelven a abarcar toda la ruta.
+  function quitarSubTiempo() {
+    clearTimeout(temporizadorSubTiempo);
+    if (rutaSel && rutaSel.puntos && rutaSel.puntos.length) { prepararSubfiltros(rutaSel.puntos); }
+    limpiarResultadosSub(true);
   }
 
   function reiniciarSubfiltros() {
