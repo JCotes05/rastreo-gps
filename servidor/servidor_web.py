@@ -14,14 +14,19 @@ para LEER, y responde estas rutas:
   /recorridos_zona        recorridos que pasaron por un círculo
                           (?lat=...&lon=...&radio=metros)
   /recorridos_rango       primera y última fecha con datos (límites del calendario)
+                          y el total de recorridos guardados
   /puntos_recorrido       todos los puntos de UN recorrido (?id=...)
   /puntos_recorridos      la geometría (y hora) de VARIOS recorridos de una
-                          vez (?ids=a,b,c&paso=N) para dibujarlos juntos en
+                          vez (?ids=a,b,c&tol=METROS) para dibujarlos juntos en
                           el mapa y resaltar el tramo de cada uno que cae
-                          dentro del filtro activo
+                          dentro del filtro activo. Con tol los puntos se
+                          reducen CONSERVANDO las curvas (ver _simplificar_ruta).
+                          (?paso=N, el método antiguo de 1 de cada N, sigue
+                          funcionando pero ya no lo usa la página.)
 """
 
 import json
+import math
 import os
 import re
 import sys
@@ -152,13 +157,56 @@ def _limitar(valor, por_defecto=30, maximo=100):
     return max(1, min(n, maximo))
 
 
+# Con el vehículo detenido el GPS "tiembla" unos metros: los pasos más cortos
+# que esto no cuentan como distancia recorrida.
+PASO_MINIMO_M = 3.0
+
+
+def _distancias_por_recorrido(cursor, ids):
+    """
+    Distancia recorrida (en metros) de cada recorrido: la suma de los
+    tramos entre puntos consecutivos, calculada con la fórmula de Haversine
+    directamente en SQL (igual que el filtro por zona; el proyecto no usa
+    PostGIS). Devuelve {id_recorrido: metros}.
+    """
+    if not ids:
+        return {}
+    cursor.execute("""
+        SELECT id_recorrido,
+               COALESCE(SUM(CASE WHEN paso >= %(minimo)s THEN paso ELSE 0 END), 0)
+        FROM (
+            SELECT id_recorrido,
+                   2 * %(R)s * ASIN(SQRT(LEAST(1.0,
+                       POWER(SIN(RADIANS((lat - lat_ant) / 2)), 2) +
+                       COS(RADIANS(lat_ant)) * COS(RADIANS(lat)) *
+                       POWER(SIN(RADIANS((lon - lon_ant) / 2)), 2)
+                   ))) AS paso
+            FROM (
+                SELECT id_recorrido,
+                       latitud::float8  AS lat,
+                       longitud::float8 AS lon,
+                       LAG(latitud::float8)  OVER ventana AS lat_ant,
+                       LAG(longitud::float8) OVER ventana AS lon_ant
+                FROM ubicaciones
+                WHERE id_recorrido = ANY(%(ids)s)
+                WINDOW ventana AS (PARTITION BY id_recorrido ORDER BY id)
+            ) con_anterior
+            WHERE lat_ant IS NOT NULL
+        ) pasos
+        GROUP BY id_recorrido
+    """, {"R": RADIO_TIERRA_M, "minimo": PASO_MINIMO_M, "ids": list(ids)})
+    return {id_rec: float(metros) for id_rec, metros in cursor.fetchall()}
+
+
 def _resumir_grupos(cursor, grupos):
     """
     Recibe filas (id_recorrido, primer_id, ultimo_id, num_puntos) y arma
     el resumen de cada recorrido: cuándo/dónde empezó y cuándo/dónde
-    terminó. Lo comparten /recorridos y /recorridos_zona.
+    terminó, y cuántos metros recorrió. Lo comparten /recorridos y
+    /recorridos_zona.
     """
     resultado = []
+    distancias = _distancias_por_recorrido(cursor, [g[0] for g in grupos])
     for id_recorrido, primer_id, ultimo_id, num_puntos in grupos:
         cursor.execute(
             "SELECT latitud, longitud, hora_gps, hora_recepcion FROM ubicaciones WHERE id = %s",
@@ -174,6 +222,7 @@ def _resumir_grupos(cursor, grupos):
         resultado.append({
             "id_recorrido": id_recorrido,
             "num_puntos": num_puntos,
+            "distancia_m": round(distancias.get(id_recorrido, 0.0)),
             "lat_inicio": inicio[0], "lon_inicio": inicio[1],
             "hora_inicio": inicio[2] or "—", "hora_recepcion_inicio": inicio[3],
             "lat_fin": fin[0], "lon_fin": fin[1],
@@ -285,6 +334,7 @@ def obtener_rango_fechas():
     conexion = obtener_conexion()
     cursor = conexion.cursor()
     primero = ultimo = None
+    total = 0
     try:
         cursor.execute("""
             SELECT hora_recepcion FROM ubicaciones
@@ -300,15 +350,89 @@ def obtener_rango_fechas():
         """)
         fila = cursor.fetchone()
         ultimo = fila[0] if fila else None
+        cursor.execute("SELECT COUNT(DISTINCT id_recorrido) FROM ubicaciones WHERE id_recorrido IS NOT NULL")
+        total = cursor.fetchone()[0]
     except psycopg2.errors.UndefinedColumn:
         conexion.rollback()
     finally:
         cursor.close()
         conexion.close()
-    return {"min": primero, "max": ultimo}
+    return {"min": primero, "max": ultimo, "total": total}
 
 
-def obtener_geometria_de_recorridos(ids, paso=1):
+# Para la vista general se reducen los puntos de cada ruta. Antes se
+# dejaba "1 de cada N": en una curva eso corta la esquina y la línea
+# parece atravesar las manzanas. Ahora se usa Douglas-Peucker: se quitan
+# SOLO los puntos que están (casi) sobre la recta entre sus vecinos, así
+# las curvas y esquinas se conservan con unos pocos metros de error.
+TOLERANCIA_POR_DEFECTO_M = 3.0
+MAX_PUNTOS_POR_RUTA = 1500
+# Tope entre TODAS las rutas de una respuesta: con 4 rutas cada una puede llegar
+# a 1500 puntos, pero con "Ver todas" (hasta 300 rutas) se reparte el presupuesto
+# para que el celular no tenga que dibujar cientos de miles de puntos.
+PRESUPUESTO_PUNTOS_TOTAL = 40000
+MIN_PUNTOS_POR_RUTA = 150
+# Aun en una recta larga se deja un punto cada ANCLA lecturas: la página
+# usa las horas de estos puntos para resaltar un tramo de tiempo, y sin
+# ellos la resolución en el tiempo sería de varios minutos.
+ANCLA_CADA_N_PUNTOS = 6
+
+
+def _simplificar_ruta(pts, tolerancia_m, ancla=ANCLA_CADA_N_PUNTOS):
+    """
+    Devuelve los ÍNDICES (ordenados) de los puntos que se conservan de
+    `pts` ([[lat, lon], ...]). Siempre se conservan el primero y el último.
+
+    Algoritmo de Douglas-Peucker, en versión iterativa (sin recursión, así
+    una ruta de miles de puntos no agota la pila), sobre coordenadas
+    proyectadas a metros alrededor del primer punto.
+    """
+    n = len(pts)
+    if n <= 2:
+        return list(range(n))
+
+    lat0, lon0 = pts[0]
+    kx = 111320.0 * math.cos(math.radians(lat0))
+    ky = 110540.0
+    xs = [(p[1] - lon0) * kx for p in pts]
+    ys = [(p[0] - lat0) * ky for p in pts]
+
+    conservar = [False] * n
+    conservar[0] = conservar[n - 1] = True
+    pendientes = [(0, n - 1)]
+    while pendientes:
+        a, b = pendientes.pop()
+        if b <= a + 1:
+            continue
+        ax, ay, bx, by = xs[a], ys[a], xs[b], ys[b]
+        dx, dy = bx - ax, by - ay
+        largo2 = dx * dx + dy * dy
+        mayor, indice = -1.0, -1
+        for i in range(a + 1, b):
+            if largo2 == 0:
+                d = math.hypot(xs[i] - ax, ys[i] - ay)
+            else:
+                t = ((xs[i] - ax) * dx + (ys[i] - ay) * dy) / largo2
+                t = 0.0 if t < 0 else (1.0 if t > 1 else t)
+                d = math.hypot(xs[i] - (ax + t * dx), ys[i] - (ay + t * dy))
+            if d > mayor:
+                mayor, indice = d, i
+        if mayor > tolerancia_m:
+            conservar[indice] = True
+            pendientes.append((a, indice))
+            pendientes.append((indice, b))
+
+    ultimo = 0
+    for i in range(1, n):
+        if conservar[i]:
+            ultimo = i
+        elif i - ultimo >= ancla:
+            conservar[i] = True
+            ultimo = i
+    return [i for i, c in enumerate(conservar) if c]
+
+
+def obtener_geometria_de_recorridos(ids, paso=1, tolerancia=None):
     """
     Devuelve, para VARIOS recorridos a la vez:
         {id_recorrido: {"pts": [[lat, lon], ...], "horas": [hora_recepcion, ...]}}
@@ -318,9 +442,13 @@ def obtener_geometria_de_recorridos(ids, paso=1):
     resaltar en el momento el tramo de cada una que cae dentro de un
     filtro por fecha o por zona, sin tener que abrir ninguna ruta.
 
-    `paso` reduce la cantidad de puntos (1 de cada N, siempre conservando
-    el primero y el último): para DIBUJAR una vista general no hace
-    falta la resolución completa, y así la respuesta pesa mucho menos.
+    Para DIBUJAR una vista general no hace falta la resolución completa,
+    y así la respuesta pesa mucho menos. Se reduce de dos maneras:
+      · `tolerancia` (metros): Douglas-Peucker, conserva las curvas. Es lo
+        que usa la página. Si la ruta sigue teniendo más de
+        MAX_PUNTOS_POR_RUTA puntos, se duplica la tolerancia hasta que quepa.
+      · `paso` (método antiguo): 1 de cada N, siempre conservando el primero
+        y el último. Solo se usa si no se manda `tolerancia`.
     """
     # 300 (no 50): con el botón "Ver todas las rutas registradas" puede
     # llegar la lista completa de recorridos de una vez.
@@ -328,6 +456,8 @@ def obtener_geometria_de_recorridos(ids, paso=1):
     if not ids:
         return {}
     paso = _limitar(paso, por_defecto=1, maximo=1000)
+    if tolerancia is not None:
+        tolerancia = max(0.0, min(float(tolerancia), 100.0))
 
     conexion = obtener_conexion()
     cursor = conexion.cursor()
@@ -352,7 +482,18 @@ def obtener_geometria_de_recorridos(ids, paso=1):
         grupo["pts"].append([lat, lon])
         grupo["horas"].append(hora)
 
-    if paso > 1:
+    if tolerancia is not None:
+        tope = max(MIN_PUNTOS_POR_RUTA, min(MAX_PUNTOS_POR_RUTA, PRESUPUESTO_PUNTOS_TOTAL // max(1, len(agrupado))))
+        for grupo in agrupado.values():
+            if len(grupo["pts"]) > 2:
+                tol = tolerancia
+                indices = _simplificar_ruta(grupo["pts"], tol)
+                while len(indices) > tope and tol < 1000:
+                    tol = max(tol * 2, 1.0)
+                    indices = _simplificar_ruta(grupo["pts"], tol)
+                grupo["pts"] = [grupo["pts"][i] for i in indices]
+                grupo["horas"] = [grupo["horas"][i] for i in indices]
+    elif paso > 1:
         for grupo in agrupado.values():
             if len(grupo["pts"]) > 2:
                 pts_red = grupo["pts"][::paso]
@@ -435,7 +576,8 @@ class ManejadorDeSolicitudes(BaseHTTPRequestHandler):
                 datos = obtener_puntos_de_recorrido(id_recorrido) if id_recorrido else []
             elif ruta.path == "/puntos_recorridos":
                 ids = parametros.get("ids", [""])[0].split(",")
-                datos = obtener_geometria_de_recorridos(ids, parametros.get("paso", [None])[0])
+                datos = obtener_geometria_de_recorridos(
+                    ids, parametros.get("paso", [None])[0], _numero(parametros, "tol"))
             else:
                 datos = obtener_datos_actuales()
             estado = 200
