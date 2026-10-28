@@ -36,7 +36,9 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse, parse_qs
 from basedatos import obtener_conexion, crear_tabla
 
-PUERTO = 8080
+# P3-S1: el puerto se puede cambiar con la variable de entorno PUERTO_HTTP
+# (solo para pruebas). Si no existe, sigue siendo 8080 como siempre.
+PUERTO = int(os.environ.get("PUERTO_HTTP", "8080"))
 
 # El nombre de cada integrante NO vive en este archivo — este archivo
 # se despliega IDÉNTICO a las 3 instancias por GitHub Actions. En vez
@@ -55,11 +57,93 @@ def obtener_nombre_integrante():
         return "Sin nombre"
 
 
+# P3-S1 ---------------------------------------------------------------
+#  PLANILLAS — qué conductor hizo cada recorrido
+# ---------------------------------------------------------------------
+# Una planilla, una vez creada, no cambia (el usuario de la app no puede
+# hacer UPDATE ni DELETE). Por eso las que ya se encontraron se guardan
+# en memoria. Las que NO existen no se guardan: pueden aparecer en el
+# siguiente paquete del listener.
+_planillas_en_memoria = {}
+MAX_PLANILLAS_EN_MEMORIA = 10000
+
+
+def _consultar_planillas(ids):
+    """
+    Devuelve {id_recorrido: {"cedula", "nombre", "celular", "verificado"}}
+    para los recorridos que SÍ tienen planilla, con UNA sola consulta.
+    Si algo falla (tabla inexistente, permiso, red...) NO lanza error:
+    imprime el problema y devuelve {} (la página verá planilla = null).
+    Usa su propia conexión, así un fallo aquí no afecta a las demás consultas.
+    """
+    ids = [i for i in ids if i]
+    if not ids:
+        return {}
+    conexion = None
+    try:
+        conexion = obtener_conexion()
+        cursor = conexion.cursor()
+        try:
+            cursor.execute("""
+                SELECT p.id_recorrido, c.cedula, c.nombre_completo, c.celular,
+                       to_char(p.verificado_en AT TIME ZONE 'America/Bogota', 'YYYY-MM-DD HH24:MI')
+                FROM planillas p
+                JOIN conductores c ON c.cedula = p.cedula
+                WHERE p.id_recorrido = ANY(%s)
+            """, (ids,))
+            filas = cursor.fetchall()
+        finally:
+            cursor.close()
+        return {
+            id_rec: {"cedula": cedula, "nombre": nombre, "celular": celular, "verificado": verificado}
+            for id_rec, cedula, nombre, celular, verificado in filas
+        }
+    except Exception as error:
+        print(f"[ERROR] No se pudieron consultar las planillas: {error}", file=sys.stderr)
+        if conexion is not None:
+            try:
+                conexion.rollback()
+            except Exception:
+                pass
+        return {}
+    finally:
+        if conexion is not None:
+            try:
+                conexion.close()
+            except Exception:
+                pass
+
+
+def obtener_planilla_de(id_recorrido):
+    """Planilla de UN recorrido (para /datos), usando la memoria si ya se conocía."""
+    if not id_recorrido:
+        return None
+    if id_recorrido in _planillas_en_memoria:
+        return _planillas_en_memoria[id_recorrido]
+    planilla = _consultar_planillas([id_recorrido]).get(id_recorrido)
+    if planilla is not None:
+        if len(_planillas_en_memoria) > MAX_PLANILLAS_EN_MEMORIA:
+            _planillas_en_memoria.clear()
+        _planillas_en_memoria[id_recorrido] = planilla
+    return planilla
+
+
+def _agregar_planillas(lista_recorridos):
+    """
+    Le agrega la clave "planilla" (objeto o None) a cada recorrido de la
+    lista, con UNA sola consulta para todos. Se llama justo antes de
+    responder.
+    """
+    planillas = _consultar_planillas([r["id_recorrido"] for r in lista_recorridos])
+    for recorrido in lista_recorridos:
+        recorrido["planilla"] = planillas.get(recorrido["id_recorrido"])
+
+
 def obtener_ultima_ubicacion():
     conexion = obtener_conexion()
     cursor = conexion.cursor()
     cursor.execute("""
-        SELECT latitud, longitud, hora_gps, hora_recepcion
+        SELECT latitud, longitud, hora_gps, hora_recepcion, id_recorrido
         FROM ubicaciones
         ORDER BY id DESC
         LIMIT 1
@@ -74,13 +158,15 @@ def obtener_datos_actuales():
     fila = obtener_ultima_ubicacion()
     nombre = obtener_nombre_integrante()
     if fila is None:
-        return {"lat": "—", "lon": "—", "fecha": "—", "hora": "—", "nombre": nombre}
+        return {"lat": "—", "lon": "—", "fecha": "—", "hora": "—", "nombre": nombre, "planilla": None}  # P3-S1
 
-    latitud, longitud, hora_gps, hora_recepcion = fila
+    latitud, longitud, hora_gps, hora_recepcion, id_recorrido = fila  # P3-S1
     fecha = hora_recepcion.split("T")[0]
     hora = hora_gps if hora_gps else "—"
 
-    return {"lat": str(latitud), "lon": str(longitud), "fecha": fecha, "hora": hora, "nombre": nombre}
+    planilla = obtener_planilla_de(id_recorrido)  # P3-S1
+    return {"lat": str(latitud), "lon": str(longitud), "fecha": fecha, "hora": hora, "nombre": nombre,
+            "planilla": planilla}  # P3-S1
 
 
 def obtener_puntos_del_recorrido_actual():
@@ -278,6 +364,7 @@ def obtener_lista_recorridos(limite=30, desde=None, hasta=None):
     finally:
         cursor.close()
         conexion.close()
+    _agregar_planillas(resultado)  # P3-S1
     return resultado
 
 
@@ -323,6 +410,7 @@ def obtener_recorridos_por_zona(lat, lon, radio, limite=30):
     finally:
         cursor.close()
         conexion.close()
+    _agregar_planillas(resultado)  # P3-S1
     return resultado
 
 
