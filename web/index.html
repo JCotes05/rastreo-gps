@@ -415,6 +415,60 @@
     .dato-flotante { padding: 4px 4px; }
     .dato-valor { font-size: 9.5px; }
   }
+  /* =====================================================================
+     PLANILLA DEL VIAJE (P3-S1)
+       · En vivo: tarjeta flotante que se abre al tocar el camión.
+       · Históricos: el conductor en cada tarjeta y la planilla en el detalle.
+     ===================================================================== */
+  .icono-camion { cursor: pointer; border-radius: 50%; transition: background 0.2s ease, box-shadow 0.2s ease; }
+  .icono-camion.seleccionado { background: rgba(230, 233, 239, 0.95); box-shadow: 0 0 0 3px var(--oscuro), 0 8px 16px -6px rgba(11, 31, 58, 0.8); }
+  .tarjeta-planilla {
+    position: fixed; left: 14px; bottom: 14px; z-index: 1170;
+    width: 330px; max-width: calc(100vw - 28px);
+    padding: 13px 16px 14px; border-radius: 16px; border-left: 7px solid var(--oscuro);
+    background: rgba(230, 233, 239, 0.98); color: var(--oscuro); box-shadow: var(--sombra);
+    animation: aparecer-planilla 0.18s ease;
+  }
+  @keyframes aparecer-planilla { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+  body.menu-abierto .tarjeta-planilla { left: 388px; }
+  body.modo-historicos .tarjeta-planilla { display: none; }
+  .planilla-cabecera { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 6px; }
+  .planilla-titulo { font-size: 10.5px; font-weight: 800; letter-spacing: 0.1em; text-transform: uppercase; color: var(--medio); }
+  .planilla-cerrar {
+    width: 30px; height: 30px; margin: -6px -8px -6px 0; border: 0; border-radius: 9px; cursor: pointer;
+    background: transparent; color: var(--oscuro); display: flex; align-items: center; justify-content: center;
+  }
+  .planilla-cerrar:hover { background: rgba(11, 31, 58, 0.12); }
+  .planilla-nombre { margin-bottom: 8px; font-size: 17px; font-weight: 800; line-height: 1.25; overflow-wrap: anywhere; }
+  .planilla-fila { display: flex; align-items: baseline; gap: 10px; font-size: 13.5px; }
+  .planilla-fila + .planilla-fila { margin-top: 3px; }
+  .planilla-etq { width: 64px; flex: none; font-size: 10.5px; font-weight: 800; letter-spacing: 0.07em; text-transform: uppercase; color: var(--medio); }
+  .planilla-val { font-weight: 800; font-variant-numeric: tabular-nums; }
+  .planilla-verificado {
+    display: flex; align-items: center; gap: 8px; margin-top: 10px; padding: 7px 10px; border-radius: 10px;
+    background: rgba(15, 118, 110, 0.12); font-size: 12px; font-weight: 700; line-height: 1.35;
+  }
+  .planilla-verificado svg { flex: none; }
+  .planilla-verificado small { display: block; margin-top: 1px; font-size: 11.5px; font-weight: 600; color: var(--medio); }
+  .planilla-vacia { font-size: 12.5px; font-weight: 600; line-height: 1.45; color: var(--medio); }
+  .planilla-vacia b { display: block; margin-bottom: 3px; font-size: 15px; font-weight: 800; color: var(--oscuro); }
+  /* Históricos: conductor en la tarjeta de la lista y planilla en el detalle */
+  .tarjeta-conductor { display: flex; align-items: center; gap: 6px; min-width: 0; margin-top: 5px; font-size: 12.5px; font-weight: 800; }
+  .tarjeta-conductor span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .tarjeta-conductor svg { flex: none; color: var(--medio); }
+  .tarjeta-conductor.sin-planilla { font-weight: 600; color: var(--medio); }
+  .detalle-planilla { margin-top: 10px; padding-top: 9px; border-top: 1px solid rgba(167, 177, 190, 0.7); }
+  .detalle-planilla .planilla-titulo { display: block; margin-bottom: 3px; }
+  .detalle-planilla .planilla-nombre { margin-bottom: 5px; font-size: 15px; }
+  .detalle-planilla .planilla-verificado { margin-top: 8px; }
+  @media (max-width: 720px) {
+    .tarjeta-planilla, body.menu-abierto .tarjeta-planilla {
+      left: 8px; right: 8px; width: auto; max-width: none; padding: 11px 14px 12px;
+      bottom: calc(80px + env(safe-area-inset-bottom, 0px));
+    }
+    body.menu-abierto .tarjeta-planilla { display: none; }
+    .planilla-nombre { font-size: 16px; }
+  }
 </style>
 </head>
 <body>
@@ -443,6 +497,17 @@
   <div class="dato-flotante"><span class="dato-etiqueta">LON</span><span class="dato-valor" id="lon">—</span></div>
   <div class="dato-flotante"><span class="dato-etiqueta">FECHA</span><span class="dato-valor" id="fecha">—</span></div>
   <div class="dato-flotante"><span class="dato-etiqueta">HORA</span><span class="dato-valor" id="hora">—</span></div>
+</div>
+
+<!-- ============ Planilla del viaje en vivo: se abre al tocar el camión (P3-S1) ============ -->
+<div class="tarjeta-planilla" id="tarjeta-planilla" role="dialog" aria-label="Planilla del viaje" hidden>
+  <div class="planilla-cabecera">
+    <span class="planilla-titulo">Planilla del viaje</span>
+    <button type="button" class="planilla-cerrar" onclick="cerrarPlanilla()" aria-label="Cerrar planilla" title="Cerrar">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>
+    </button>
+  </div>
+  <div id="planilla-contenido"></div>
 </div>
 
 <button class="boton-centrar" onclick="centrarEnVehiculo()" title="Centrar en el vehículo" aria-label="Centrar en el vehículo">
@@ -533,6 +598,7 @@
           <div class="tarjeta-linea"><span class="tarjeta-etq"><i class="punto-color" style="background:#0F766E"></i>Desde</span><span class="tarjeta-val" id="detalle-desde">—</span></div>
           <div class="tarjeta-linea"><span class="tarjeta-etq"><i class="punto-color" style="background:#C2410C"></i>Hasta</span><span class="tarjeta-val" id="detalle-hasta">—</span></div>
           <div class="tarjeta-datos" id="detalle-datos"></div>
+          <div class="detalle-planilla" id="detalle-planilla"></div>
         </div>
 
         <div class="punto-info" id="punto-info" hidden>
@@ -752,6 +818,62 @@
            '<div><b>' + textoVelocidadMedia(r.distancia_m, ms) + '</b><span>Vel. media</span></div>';
   }
 
+  // ---- Planilla del viaje (P3-S1): conductor verificado de cada recorrido ----
+  // El servidor manda "planilla": {cedula, nombre, celular, verificado} o null
+  // (null = recorrido sin conductor verificado, como todos los anteriores a P3).
+  function escaparHtml(texto) {
+    return String(texto).replace(/[&<>"']/g, function (c) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+    });
+  }
+  // '1001000001' -> '1.001.000.001'
+  function formatearCedula(c) {
+    c = String(c || '');
+    return /^\d+$/.test(c) ? c.replace(/\B(?=(\d{3})+(?!\d))/g, '.') : (c || '—');
+  }
+  // '3001000001' -> '300 100 0001'
+  function formatearCelular(n) {
+    n = String(n || '');
+    return /^\d{10}$/.test(n) ? n.slice(0, 3) + ' ' + n.slice(3, 6) + ' ' + n.slice(6) : (n || '—');
+  }
+  // '2026-10-27 21:05' (ya viene en hora de Colombia) -> 'Hoy 21:05' | '14 oct 21:05'
+  function textoVerificado(v) {
+    if (!v) { return ''; }
+    var p = String(v).split(' ');
+    return etiquetaDia(p[0]) + ' ' + (p[1] || '').slice(0, 5);
+  }
+  var SVG_PERSONA = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 3.6-7 8-7s8 3 8 7"/></svg>';
+  var SVG_VERIFICADO = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#0F766E" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l7 3v5c0 4.5-3 8.3-7 10-4-1.7-7-5.5-7-10V6z"/><path d="M8.5 12l2.5 2.5 4.5-5"/></svg>';
+
+  function htmlFilasPlanilla(p) {
+    return '<div class="planilla-nombre">' + escaparHtml(p.nombre || '—') + '</div>' +
+      '<div class="planilla-fila"><span class="planilla-etq">Cédula</span><span class="planilla-val">' + escaparHtml(formatearCedula(p.cedula)) + '</span></div>' +
+      '<div class="planilla-fila"><span class="planilla-etq">Celular</span><span class="planilla-val">' + escaparHtml(formatearCelular(p.celular)) + '</span></div>' +
+      '<div class="planilla-verificado">' + SVG_VERIFICADO + '<span>Verificado con reconocimiento facial' +
+      (p.verificado ? '<small>' + escaparHtml(textoVerificado(p.verificado)) + '</small>' : '') + '</span></div>';
+  }
+  // Tarjeta flotante de Tiempo Real.  undefined = el servidor todavía no envía planillas.
+  function htmlPlanillaVivo(p) {
+    if (p === undefined) {
+      return '<div class="planilla-vacia"><b>Planilla no disponible</b>El servidor todavía no envía la información del conductor.</div>';
+    }
+    if (!p) {
+      return '<div class="planilla-vacia"><b>Sin conductor verificado</b>Este recorrido empezó sin reconocimiento facial, por eso la planilla está en blanco.</div>';
+    }
+    return htmlFilasPlanilla(p);
+  }
+  // Línea con el conductor en cada tarjeta de la lista de Históricos.
+  function htmlConductorTarjeta(p) {
+    if (!p) { return '<div class="tarjeta-conductor sin-planilla">' + SVG_PERSONA + '<span>Sin planilla</span></div>'; }
+    return '<div class="tarjeta-conductor">' + SVG_PERSONA + '<span>' + escaparHtml(p.nombre || '—') + '</span></div>';
+  }
+  // Bloque de planilla en la tarjeta del detalle de una ruta.
+  function htmlPlanillaDetalle(p) {
+    var titulo = '<span class="planilla-titulo">Planilla</span>';
+    if (!p) { return titulo + '<div class="planilla-vacia">Sin planilla: este recorrido no tiene conductor verificado.</div>'; }
+    return titulo + htmlFilasPlanilla(p);
+  }
+
   var ATRIBUTOS_ICONO = 'width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"';
   var SVG_OJO = '<svg ' + ATRIBUTOS_ICONO + '><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>';
   var SVG_OJO_TACHADO = '<svg ' + ATRIBUTOS_ICONO + '><path d="M3 3l18 18"/><path d="M10.6 5.1A10.7 10.7 0 0 1 12 5c6.4 0 10 7 10 7a17 17 0 0 1-3.2 4.2M6.6 6.6A16.7 16.7 0 0 0 2 12s3.6 7 10 7a9.7 9.7 0 0 0 4.4-1"/><path d="M9.9 9.9a3 3 0 0 0 4.2 4.2"/></svg>';
@@ -820,6 +942,43 @@
   });
 
   var marcador = null;
+
+  // ---- Tarjeta flotante con la planilla del recorrido en curso (P3-S1) ----
+  // Se abre/cierra al tocar el camión; también se cierra con la X, con Esc o
+  // tocando el mapa. Mientras está abierta se actualiza con cada consulta.
+  var planillaVivo;                 // undefined = aún no se sabe; null = sin planilla
+  var planillaAbierta = false;
+  var htmlPlanillaMostrado = null;
+
+  function pintarPlanilla() {
+    var html = htmlPlanillaVivo(planillaVivo);
+    if (html !== htmlPlanillaMostrado) {       // solo se toca la página si algo cambió
+      porId('planilla-contenido').innerHTML = html;
+      htmlPlanillaMostrado = html;
+    }
+  }
+  function marcarCamion(seleccionado) {
+    var elemento = marcador && marcador.getElement();
+    if (elemento) { elemento.classList.toggle('seleccionado', seleccionado); }
+  }
+  function abrirPlanilla() {
+    planillaAbierta = true;
+    pintarPlanilla();
+    porId('tarjeta-planilla').hidden = false;
+    marcarCamion(true);
+  }
+  function cerrarPlanilla() {
+    planillaAbierta = false;
+    porId('tarjeta-planilla').hidden = true;
+    marcarCamion(false);
+  }
+  function alternarPlanilla() {
+    if (planillaAbierta) { cerrarPlanilla(); } else { abrirPlanilla(); }
+  }
+  mapa.on('click', function () { if (planillaAbierta) { cerrarPlanilla(); } });
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape' && planillaAbierta) { cerrarPlanilla(); }
+  });
 
   // La línea del recorrido en curso — empieza vacía y se va llenando.
   // Son DOS líneas superpuestas: un contorno blanco debajo y el color de
@@ -902,13 +1061,18 @@
           document.title = datos.nombre + ' · Orbita';
         }
 
+        // Planilla del recorrido en curso (P3-S1). Si el servidor aún no la manda, queda undefined.
+        planillaVivo = datos.planilla;
+        if (planillaAbierta) { pintarPlanilla(); }
+
         var lat = parseFloat(datos.lat);
         var lon = parseFloat(datos.lon);
         if (!isNaN(lat) && !isNaN(lon)) {
           var posicion = [lat, lon];
           if (marcador === null) {
             // Primera ubicación real: crea el marcador y acerca el mapa.
-            marcador = L.marker(posicion, { icon: iconoCamion }).addTo(mapa);
+            marcador = L.marker(posicion, { icon: iconoCamion, title: 'Ver planilla del viaje' }).addTo(mapa);
+            marcador.on('click', alternarPlanilla);
             mapa.setView(posicion, 15);
           } else {
             marcador.setLatLng(posicion);
@@ -1226,6 +1390,7 @@
       tarjeta.innerHTML =
         '<div class="tarjeta-cabecera"><div class="tarjeta-titulo">' + htmlTituloRuta(r) + '</div>' +
         (lista.length > 1 ? '<button type="button" class="ojo"></button>' : '') + '</div>' +
+        htmlConductorTarjeta(r.planilla) +
         '<div class="tarjeta-datos">' + htmlDatosRuta(r) + '</div>';
       var ojo = tarjeta.querySelector('.ojo');
       if (ojo) {
@@ -1902,6 +2067,7 @@
     porId('detalle-desde').textContent = fechaCorta(r.hora_recepcion_inicio);
     porId('detalle-hasta').textContent = fechaCorta(r.hora_recepcion_fin);
     porId('detalle-datos').innerHTML = htmlDatosRuta(r);
+    porId('detalle-planilla').innerHTML = htmlPlanillaDetalle(r.planilla);
   }
 
   function dibujarDetalle(puntos, color) {
