@@ -101,7 +101,7 @@ def main():
         "destino_direccion": "Buenavista", "destino": BUENAVISTA,
         "destinatario_nombre": "Destinatario de prueba", "destinatario_celular": "3001000011",
         "tipo_carga": "general", "descripcion": "Cajas de prueba", "empaque": "cajas", "cantidad": 5,
-        "peso_kg": 800, "valor_declarado": 1000000, "placa": "ZZZ901",
+        "peso_kg": 800, "placa": "ZZZ901",
         "cargue_programado": datetime.now(COLOMBIA).strftime("%Y-%m-%dT%H:%M"),
     }
     estado, r = pedir("POST", "/api/envios", envio)

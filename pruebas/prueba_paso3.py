@@ -172,7 +172,7 @@ def main():
         "destino_direccion": "Centro de Barranquilla", "destino": CENTRO,
         "destinatario_nombre": "Destinatario de prueba", "destinatario_celular": "3001000011",
         "tipo_carga": "general", "descripcion": "Cajas de prueba", "empaque": "cajas", "cantidad": 20,
-        "peso_kg": 3000, "valor_declarado": 5000000, "cargue_programado": manana, "placa": "ZZZ901",
+        "peso_kg": 3000, "cargue_programado": manana, "placa": "ZZZ901",
     }
     estado, r = pedir("POST", "/api/envios", envio)
     id_envio = r.get("envio", {}).get("id")

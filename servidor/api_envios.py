@@ -472,7 +472,7 @@ def _envio_json(cur, e, con_ruta=False, para_conductor=False):
                     "destinatario": e["destinatario_nombre"], "celular": e["destinatario_celular"]},
         "carga": {"tipo": e["tipo_carga"], "tipo_nombre": TIPOS_CARGA[e["tipo_carga"]][0],
                   "descripcion": e["descripcion"], "empaque": e["empaque"], "empaque_nombre": EMPAQUES[e["empaque"]],
-                  "cantidad": e["cantidad"], "peso_kg": e["peso_kg"], "valor_declarado": e["valor_declarado"]},
+                  "cantidad": e["cantidad"], "peso_kg": e["peso_kg"]},
         "cargue_programado": _iso(e["cargue_programado"]),
         "placa": e["placa"],
         "plan": {"fuente": e["ruta_fuente"], "distancia_m": e["distancia_m"], "duracion_s": e["duracion_s"]},
@@ -755,7 +755,7 @@ def crear_envio(p):
         "empaque": _opcion(d, "empaque", EMPAQUES, "el empaque"),
         "cantidad": _entero(d, "cantidad", 1, 1_000_000, "la cantidad"),
         "peso_kg": peso,
-        "valor_declarado": _entero(d, "valor_declarado", 0, 10_000_000_000_000, "el valor declarado"),
+        "valor_declarado": 0,          # ya no se pide (la columna sigue en la tabla y queda en 0)
         "cargue_programado": cargue,
         "placa": _placa(d),
     }

@@ -910,10 +910,8 @@
             <div><label for="np-empaque">Empaque</label><select id="np-empaque"></select></div>
             <div><label for="np-cantidad">Cantidad</label><input type="number" id="np-cantidad" min="1" step="1" inputmode="numeric"></div>
           </div>
-          <div class="dos-campos">
-            <div><label for="np-valor">Valor declarado ($)</label><input type="text" id="np-valor" inputmode="numeric" placeholder="45000000"></div>
-            <div><label for="np-cargue">Fecha de cargue</label><input type="datetime-local" id="np-cargue"></div>
-          </div>
+          <label for="np-cargue">Fecha de cargue</label>
+          <input type="datetime-local" id="np-cargue">
         </div>
 
         <div class="panel">
@@ -2783,7 +2781,6 @@
         .format(new Date(ms));
     } catch (e) { var d = new Date(ms); return dos(d.getHours()) + ':' + dos(d.getMinutes()); }
   }
-  function textoPesos(v) { return '$ ' + String(Math.round(v || 0)).replace(/\B(?=(\d{3})+(?!\d))/g, '.'); }
   function textoKg(v) { return String(Math.round(v || 0)).replace(/\B(?=(\d{3})+(?!\d))/g, '.') + ' kg'; }
   function textoMinutos(s) { return textoDuracion((s || 0) * 1000); }
   function textoAlerta(a) {
@@ -3075,7 +3072,6 @@
         htmlFila('Cliente', escaparHtml(e.cliente.nombre) + ' <small class="gris">NIT ' + escaparHtml(e.cliente.nit) + '</small>') +
         htmlFila('Carga', escaparHtml(c.tipo_nombre) + ' · ' + textoKg(c.peso_kg)) +
         htmlFila('', escaparHtml(c.cantidad + ' ' + c.empaque_nombre.toLowerCase() + ' · ' + c.descripcion)) +
-        htmlFila('Valor', textoPesos(c.valor_declarado)) +
         htmlFila('Cargue', fechaCorta(e.cargue_programado)) +
         htmlFila('Contacto', escaparHtml(e.origen.contacto) + ' · ' + escaparHtml(formatearCelular(e.origen.celular))) +
         htmlFila('Recibe', escaparHtml(e.destino.destinatario) + ' · ' + escaparHtml(formatearCelular(e.destino.celular))) +
@@ -3156,7 +3152,7 @@
     origen_direccion: 'np-origen-dir', origen: 'np-origen-dir', cargue_contacto: 'np-cargue-contacto', cargue_celular: 'np-cargue-celular',
     destino_direccion: 'np-destino-dir', destino: 'np-destino-dir', destinatario_nombre: 'np-destinatario-nombre',
     destinatario_celular: 'np-destinatario-celular', tipo_carga: 'np-tipo', descripcion: 'np-descripcion', empaque: 'np-empaque',
-    cantidad: 'np-cantidad', peso_kg: 'np-peso', valor_declarado: 'np-valor', cargue_programado: 'np-cargue', placa: 'np-candidatos'
+    cantidad: 'np-cantidad', peso_kg: 'np-peso', cargue_programado: 'np-cargue', placa: 'np-candidatos'
   };
 
   function abrirNuevoEnvio() {
@@ -3185,7 +3181,6 @@
       tipo_carga: v('np-tipo'), descripcion: v('np-descripcion'), empaque: v('np-empaque'),
       cantidad: parseInt(soloDigitos(v('np-cantidad')), 10) || 0,
       peso_kg: parseInt(soloDigitos(v('np-peso')), 10) || 0,
-      valor_declarado: parseInt(soloDigitos(v('np-valor')), 10) || 0,
       cargue_programado: v('np-cargue')
     };
   }
@@ -3423,7 +3418,7 @@
     f('np-cliente-nombre', 'Distribuidora del Caribe S.A.S.'); f('np-cliente-nit', '900123456-7');
     f('np-origen-dir', 'Universidad del Norte, Barranquilla'); f('np-cargue-contacto', 'Laura Gómez'); f('np-cargue-celular', '3001234567');
     f('np-destino-dir', 'Puerto de Barranquilla'); f('np-destinatario-nombre', 'Carlos Pérez'); f('np-destinatario-celular', '3007654321');
-    f('np-descripcion', 'Cajas de electrodomésticos'); f('np-cantidad', '40'); f('np-peso', '3200'); f('np-valor', '45000000');
+    f('np-descripcion', 'Cajas de electrodomésticos'); f('np-cantidad', '40'); f('np-peso', '3200');
     if (porId('np-tipo').querySelector('option[value=general]')) { f('np-tipo', 'general'); }
     if (porId('np-empaque').querySelector('option[value=cajas]')) { f('np-empaque', 'cajas'); }
     f('np-cargue', cargueSugerido());
