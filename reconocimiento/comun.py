@@ -41,10 +41,21 @@ ARCHIVO_BASE = os.path.join(CARPETA, "conductores_rostros.json")   # NO se sube 
 CARPETA_FOTOS = os.path.join(CARPETA, "fotos")                    # tampoco
 
 # Similitud mínima para aceptar que el rostro es de un conductor registrado.
-# OpenCV recomienda 0.363 para SFace; usamos algo más estricto porque poner
-# a otra persona en la planilla es peor que pedirle que lo intente de nuevo.
-# Se calibra con las pruebas (reconocer.py muestra la similitud en pantalla).
-UMBRAL = 0.40
+# OpenCV recomienda 0.363 para SFace, pero con 0.40 un compañero con gafas pasó
+# como Adrián (similitud 0.40) en la presentación del P3-S1. Los conductores reales
+# dan 0.63–0.92 y los impostores medidos ≤ 0.40, así que 0.55 queda en medio.
+# Poner a otra persona en la planilla es peor que pedirle que lo intente de nuevo.
+# Se calibra con calibrar.py (tabla de falsos aceptados / falsos rechazados).
+UMBRAL = 0.55
+
+# Ventaja mínima del conductor más parecido sobre el segundo. Si el rostro "se parece
+# un poco a todos" (lo típico de un desconocido), no se acepta a ninguno.
+MARGEN = 0.10
+
+# Umbral propio de cada conductor: si dos conductores registrados ya se parecen entre sí
+# (por ejemplo, ambos con gafas), a cada uno se le exige superar ese parecido por esta
+# distancia. Nunca baja de UMBRAL. Se recalcula solo al cargar la base.
+DISTANCIA_A_VECINOS = 0.15
 
 CONFIANZA_DETECCION = 0.85     # qué tan seguro debe estar YuNet de que es un rostro
 ANCHO_MIN_RECONOCER = 70       # px: rostros más pequeños (lejos de la cámara) no se evalúan
@@ -206,6 +217,7 @@ class BaseRostros:
     def __init__(self, ruta=ARCHIVO_BASE):
         self.ruta = ruta
         self.conductores = {}       # cedula -> {"nombre", "registrado", "muestras": np.array (n, 128)}
+        self._vecinos = {}          # cedula -> parecido con el conductor registrado más parecido (caché)
         if os.path.isfile(ruta):
             with open(ruta, "r", encoding="utf-8") as f:
                 datos = json.load(f)
@@ -234,6 +246,7 @@ class BaseRostros:
         os.replace(temporal, self.ruta)     # así nunca queda un archivo a medio escribir
 
     def agregar(self, cedula, nombre, muestras):
+        self._vecinos = {}
         self.conductores[cedula] = {
             "nombre": nombre,
             "registrado": datetime.now().strftime("%Y-%m-%d %H:%M"),
@@ -241,25 +254,65 @@ class BaseRostros:
         }
 
     def eliminar(self, cedula):
+        self._vecinos = {}
         return self.conductores.pop(cedula, None) is not None
+
+    @staticmethod
+    def _parecido(muestras, huella):
+        """Promedio de las 3 muestras más parecidas a la huella."""
+        return float(np.mean(np.sort(muestras @ huella)[::-1][:3]))
 
     def similitudes(self, huella):
         """Similitud de una huella con cada conductor: promedio de sus 3 muestras más parecidas.
         Devuelve una lista [(similitud, cedula, nombre)] de mayor a menor."""
-        resultado = []
-        for cedula, c in self.conductores.items():
-            parecidos = np.sort(c["muestras"] @ huella)[::-1]
-            resultado.append((float(np.mean(parecidos[:3])), cedula, c["nombre"]))
+        resultado = [(self._parecido(c["muestras"], huella), cedula, c["nombre"])
+                     for cedula, c in self.conductores.items()]
         resultado.sort(reverse=True)
         return resultado
 
-    def identificar(self, huella, umbral=UMBRAL):
-        """(cedula, nombre, similitud) del conductor reconocido, o (None, None, similitud) si nadie
-        supera el umbral. La similitud devuelta es siempre la del más parecido."""
+    def parecido_a_vecinos(self, cedula):
+        """Qué tanto se parece este conductor al conductor registrado MÁS parecido a él
+        (0 si es el único). Usa la misma medida que identificar()."""
+        propias = self.conductores[cedula]["muestras"]
+        mayor = 0.0
+        for otra, c in self.conductores.items():
+            if otra != cedula:
+                mayor = max(mayor, max(self._parecido(c["muestras"], m) for m in propias))
+        return mayor
+
+    def umbral_de(self, cedula, umbral=UMBRAL):
+        """Umbral que debe superar este conductor: el general, o más si se parece a otro registrado."""
+        if cedula not in self._vecinos:
+            self._vecinos[cedula] = self.parecido_a_vecinos(cedula)
+        return max(umbral, self._vecinos[cedula] + DISTANCIA_A_VECINOS)
+
+    def evaluar(self, huella, umbral=UMBRAL, margen=MARGEN):
+        """Decisión completa sobre una huella. Devuelve un diccionario:
+            cedula, nombre    del aceptado (None si no se acepta a nadie)
+            similitud         la del más parecido (aunque no se acepte)
+            mejor, segunda    cédula del más parecido y similitud del segundo
+            umbral            el que se le exigió al más parecido
+            motivo            'aceptado' | 'bajo_umbral' | 'poca_ventaja' | 'sin_conductores'"""
         lista = self.similitudes(huella)
         if not lista:
-            return None, None, 0.0
+            return {"cedula": None, "nombre": None, "similitud": 0.0, "mejor": None,
+                    "segunda": 0.0, "umbral": umbral, "motivo": "sin_conductores"}
         similitud, cedula, nombre = lista[0]
-        if similitud >= umbral:
-            return cedula, nombre, similitud
-        return None, None, similitud
+        segunda = lista[1][0] if len(lista) > 1 else 0.0
+        exigido = self.umbral_de(cedula, umbral)
+        r = {"cedula": None, "nombre": None, "similitud": similitud, "mejor": cedula,
+             "segunda": segunda, "umbral": exigido}
+        if similitud < exigido:
+            r["motivo"] = "bajo_umbral"
+        elif similitud - segunda < margen:
+            r["motivo"] = "poca_ventaja"
+        else:
+            r.update(cedula=cedula, nombre=nombre, motivo="aceptado")
+        return r
+
+    def identificar(self, huella, umbral=UMBRAL):
+        """(cedula, nombre, similitud) del conductor reconocido, o (None, None, similitud) si no se
+        acepta a nadie (bajo el umbral o sin ventaja sobre el segundo). La similitud devuelta es
+        siempre la del más parecido."""
+        r = self.evaluar(huella, umbral)
+        return r["cedula"], r["nombre"], r["similitud"]

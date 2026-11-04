@@ -4,3 +4,6 @@ conductores_rostros.json.tmp
 fotos/
 registro_identificaciones.csv
 __pycache__/
+# Calibración (dice quién participó) y respaldos locales de la base
+calibracion.csv
+respaldo_*/

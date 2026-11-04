@@ -128,13 +128,16 @@
 
   // ---- Seguir al camión o ver toda la ruta ----
   function pintarBoton() { botonCentrar.className = seguir ? 'activo' : ''; }
-  function encuadrar() {
+  // Sin animación salvo cuando lo pide el conductor con el botón: Leaflet ignora un setView que
+  // llega mientras otra animación de zoom sigue en curso (el mapa se quedaba lejos del camión).
+  function encuadrar(animar) {
     var limites = null;
     if (ruta && ruta.puntos.length) { limites = L.latLngBounds(ruta.puntos); }
     if (posicion) { limites = limites ? limites.extend(posicion) : L.latLngBounds([posicion, posicion]); }
     if (!limites) { return; }
-    if (limites.getNorthEast().equals(limites.getSouthWest())) { mapa.setView(limites.getCenter(), 16); }
-    else { mapa.fitBounds(limites, { padding: [40, 40], maxZoom: 16 }); }
+    var opciones = { animate: !!animar };
+    if (limites.getNorthEast().equals(limites.getSouthWest())) { mapa.setView(limites.getCenter(), 16, opciones); }
+    else { mapa.fitBounds(limites, { padding: [40, 40], maxZoom: 16, animate: !!animar }); }
     encuadrado = true;
   }
   function centrarEnCamion(animar) {
@@ -143,7 +146,7 @@
   }
   mapa.on('dragstart', function () { if (seguir) { seguir = false; pintarBoton(); } });
   botonCentrar.addEventListener('click', function () {
-    if (seguir || !posicion) { seguir = false; encuadrar(); }   // segundo toque: ver toda la ruta
+    if (seguir || !posicion) { seguir = false; encuadrar(true); }   // segundo toque: ver toda la ruta
     else { seguir = true; centrarEnCamion(true); }
     pintarBoton();
   });
@@ -247,6 +250,18 @@
     }
   };
   pintarBoton();
+
+  // El script corre antes de que Android le dé tamaño al WebView (el mapa arranca en 0 px):
+  // cuando el contenedor cambia de tamaño, Leaflet vuelve a medir y pide las teselas que faltan.
+  var contenedor = document.getElementById('mapa');
+  function remedir() {
+    if (contenedor.clientHeight === 0) { return; }
+    mapa.invalidateSize({ animate: false });
+    if (seguir && posicion) { centrarEnCamion(false); }
+    else if (ruta || posicion) { encuadrar(); }
+  }
+  if (window.ResizeObserver) { new ResizeObserver(remedir).observe(contenedor); }
+  else { window.addEventListener('resize', remedir); }
 })();
 </script>
 </body>

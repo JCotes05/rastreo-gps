@@ -9,7 +9,12 @@ responde con su cédula y su nombre. El celular es quien luego lo manda al servi
     py servicio_reconocimiento.py --puerto COM6         (el puerto COM "entrante" de Windows)
     py servicio_reconocimiento.py --consola             (prueba sin celular: escribes tú los mensajes)
 
-Opciones: --camara N, --segundos 10, --umbral 0.40, --sin-ventana
+Opciones: --camara N, --segundos 10, --umbral 0.55, --sin-ventana
+
+Para evitar falsos positivos (P3-S1: un compañero con gafas pasó como Adrián), un
+conductor se acepta solo si en 8 cuadros seguidos supera su umbral Y le saca ventaja
+al segundo más parecido (ver comun.py). Tras 2 NO_RECONOCIDO seguidos se responde
+ERROR durante 30 s, para que insistir hasta que salga una racha con suerte no sirva.
 
 PROTOCOLO — una línea de texto por mensaje (UTF-8, termina en salto de línea):
 
@@ -46,7 +51,9 @@ except ImportError:          # el modo consola funciona sin pyserial
     serial = None
 
 SEGUNDOS_POR_DEFECTO = 10      # tiempo máximo para reconocer antes de responder NO_RECONOCIDO
-CUADROS_SEGUIDOS = 5           # cuadros seguidos reconociendo a la MISMA persona para aceptarla
+CUADROS_SEGUIDOS = 8           # cuadros seguidos aceptando a la MISMA persona (cada uno supera umbral y margen)
+FALLOS_ANTES_DE_ESPERA = 2     # tras este número de NO_RECONOCIDO seguidos se hace esperar...
+SEGUNDOS_DE_ESPERA = 30        # ...este tiempo antes de aceptar otro intento
 VENTANA = "Orbita - Identificando conductor"
 ARCHIVO_REGISTRO = os.path.join(CARPETA, "registro_identificaciones.csv")   # evidencia para el informe
 
@@ -82,6 +89,8 @@ class Identificador:
         self.segundos = segundos
         self.umbral = umbral
         self.mostrar = mostrar_ventana
+        self.fallos_seguidos = 0
+        self.bloqueado_hasta = 0.0      # time.monotonic() hasta el que no se aceptan intentos
 
     def _mostrar(self, vista, espera_ms=1):
         if not self.mostrar:
@@ -119,7 +128,8 @@ class Identificador:
                 rostros = [r for r in self.motor.detectar(cuadro) if r[2] >= ANCHO_MIN_RECONOCER]
                 if rostros:
                     rostro = rostros[0]
-                    cedula, nombre, similitud = base.identificar(self.motor.huella(cuadro, rostro), self.umbral)
+                    d = base.evaluar(self.motor.huella(cuadro, rostro), self.umbral)
+                    cedula, nombre, similitud = d["cedula"], d["nombre"], d["similitud"]
                     mejor_similitud = max(mejor_similitud, similitud)
                     if cedula and cedula == racha_cedula:
                         racha_sims.append(similitud)
@@ -128,7 +138,12 @@ class Identificador:
                     else:
                         racha_cedula, racha_sims = None, []
                     if self.mostrar:
-                        texto = f"{nombre}  {similitud:.2f}" if cedula else f"Desconocido  {similitud:.2f}"
+                        if cedula:
+                            texto = f"{nombre}  {similitud:.2f}  ({len(racha_sims)}/{CUADROS_SEGUIDOS})"
+                        elif d["motivo"] == "poca_ventaja":
+                            texto = f"Dudoso  {similitud:.2f} vs {d['segunda']:.2f}"
+                        else:
+                            texto = f"Desconocido  {similitud:.2f} < {d['umbral']:.2f}"
                         dibujar_rostro(vista, rostro, texto, VERDE if cedula else ROJO)
                     if len(racha_sims) >= CUADROS_SEGUIDOS:
                         resultado = {
@@ -175,8 +190,22 @@ def atender(linea, identificador, enviar):
         return False
 
     if comando == "IDENTIFICAR":
+        espera = identificador.bloqueado_hasta - time.monotonic()
+        if espera > 0:
+            enviar(f"ERROR;MOTIVO:demasiados intentos fallidos, espera {espera:.0f} s")
+            registrar_en_csv("error: en espera tras intentos fallidos", None, None, 0.0, 0.0)
+            return True
         enviar("IDENTIFICANDO")
         r = identificador.identificar()
+        if r["estado"] == "no_reconocido":
+            identificador.fallos_seguidos += 1
+            if identificador.fallos_seguidos >= FALLOS_ANTES_DE_ESPERA:
+                identificador.fallos_seguidos = 0
+                identificador.bloqueado_hasta = time.monotonic() + SEGUNDOS_DE_ESPERA
+                print(f"           ({FALLOS_ANTES_DE_ESPERA} intentos fallidos seguidos: "
+                      f"espera de {SEGUNDOS_DE_ESPERA} s)")
+        elif r["estado"] == "reconocido":
+            identificador.fallos_seguidos = 0
         if r["estado"] == "reconocido":
             enviar(f"CONDUCTOR;CED:{r['cedula']};NOM:{limpiar_campo(r['nombre'])};SIM:{r['similitud']:.2f}")
             registrar_en_csv("reconocido", r["cedula"], r["nombre"], r["similitud"], r["segundos"])
@@ -269,14 +298,16 @@ def main(argv=None):
         salir_con_error("Indica el puerto (--puerto COM6) o usa --consola para probar sin celular.\n"
                         "Para ver los puertos:  py servicio_reconocimiento.py --listar-puertos")
     if not 0 < args.umbral < 1:
-        salir_con_error("El umbral debe estar entre 0 y 1 (por ejemplo 0.40).")
+        salir_con_error("El umbral debe estar entre 0 y 1 (por ejemplo 0.55).")
     if args.segundos < 2:
         salir_con_error("Usa al menos 2 segundos (--segundos).")
 
     base = BaseRostros()
     if not base.conductores:
         salir_con_error('No hay conductores registrados. Primero:  py registrar.py --cedula ... --nombre "..."')
-    print("\nConductores registrados: " + ", ".join(c["nombre"] for c in base.conductores.values()))
+    print("\nConductores registrados (umbral que se le exige a cada uno):")
+    for cedula, c in base.conductores.items():
+        print(f"  {c['nombre']:<34} {base.umbral_de(cedula, args.umbral):.2f}")
 
     identificador = Identificador(args.camara, args.segundos, args.umbral, not args.sin_ventana)
     try:

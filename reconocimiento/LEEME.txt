@@ -6,6 +6,7 @@ Archivos
   registrar.py    Registra el rostro de un conductor (con la camara o desde fotos).
   reconocer.py    Prueba en vivo: muestra el nombre y la similitud de cada rostro.
   servicio_reconocimiento.py   Atiende al celular por Bluetooth (paso 6): IDENTIFICAR -> CONDUCTOR;...
+  calibrar.py     Mide falsos aceptados / falsos rechazados para elegir el umbral con datos.
   modelos/        YuNet (detecta rostros) y SFace (saca la "huella"), de OpenCV Zoo.
 
 Se crean al usarlo (NO se suben a GitHub, son datos biometricos):
@@ -22,7 +23,7 @@ Uso
   py registrar.py --listar
   py registrar.py --borrar 1001000002
   py reconocer.py
-  py reconocer.py --umbral 0.45 --camara 1
+  py reconocer.py --umbral 0.60 --camara 1
   py servicio_reconocimiento.py --listar-puertos
   py servicio_reconocimiento.py --puerto COM6
   py servicio_reconocimiento.py --consola        (prueba sin celular)
@@ -34,3 +35,14 @@ Protocolo con el celular (una linea por mensaje):
 
 La cedula debe ser EXACTAMENTE la misma de la tabla 'conductores' del servidor.
 La carpeta del proyecto no debe tener tildes ni ñ en su ruta (ej. C:\orbita\reconocimiento).
+
+Reglas contra falsos positivos (desde el 4-nov-2026, ver comun.py):
+  - Umbral 0.55 (antes 0.40: un companero con gafas paso como Adrian con 0.40).
+  - El mas parecido debe sacarle 0.10 al segundo (si no: 'Dudoso').
+  - Si dos conductores registrados se parecen, a cada uno se le exige ese parecido + 0.15.
+  - El servicio pide 8 cuadros seguidos y, tras 2 intentos fallidos, hace esperar 30 s.
+
+Calibracion (con permiso de quien participe; solo se guardan numeros, no imagenes):
+  py calibrar.py --grabar --tipo genuino --cedula 1001000001 --etiqueta "jesus con gafas"
+  py calibrar.py --grabar --tipo impostor --etiqueta "companero 1 con gafas"
+  py calibrar.py --reporte
