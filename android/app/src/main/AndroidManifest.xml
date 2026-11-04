@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+    <!-- Permiso para ubicación EXACTA (GPS) -->
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <!-- Permiso para ubicación aproximada (por antenas/wifi, como respaldo) -->
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+    <!-- Permiso para enviar mensajes de texto -->
+    <uses-permission android:name="android.permission.INTERNET" />
+    <!-- Servicio en primer plano de tipo ubicación (Android 9+ y Android 14+) -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
+    <!-- Mostrar la notificación "Enviando ubicación" (Android 13+) -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- Mantener el procesador despierto con la pantalla bloqueada -->
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <!-- Poder pedirle al usuario que la app no sea "optimizada" por la batería -->
+    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
+    <!-- OPCIONAL pero recomendado: permite que el usuario ponga la ubicación en
+     "Permitir siempre" desde los ajustes del teléfono. Con eso, si el sistema
+     llegara a cerrar la app y la reiniciara, el envío sigue obteniendo el GPS.
+     La app NO lo pide sola; solo hace que esa opción exista en los ajustes. -->
+    <uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION" />
+    <!-- ===== 5) P3-S1: BLUETOOTH PARA HABLAR CON EL COMPUTADOR DE RECONOCIMIENTO ===== -->
+    <!--
+      Agrega estas 3 líneas junto a los demás permisos (antes de <application ...>):
+    -->
+    <uses-permission android:name="android.permission.BLUETOOTH" android:maxSdkVersion="30" />
+    <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
+    <uses-feature android:name="android.hardware.bluetooth" android:required="false" />
+    <application
+        android:allowBackup="true"
+        android:usesCleartextTraffic="true"
+        android:dataExtractionRules="@xml/data_extraction_rules"
+        android:fullBackupContent="@xml/backup_rules"
+        android:icon="@mipmap/ic_orbita"
+        android:label="@string/app_name"
+        android:roundIcon="@mipmap/ic_orbita"
+        android:supportsRtl="true"
+        android:theme="@style/Theme.LocalizadorSMS">
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"
+            android:label="@string/app_name"
+            android:theme="@style/Theme.LocalizadorSMS"
+            android:windowSoftInputMode="adjustResize">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+        <service
+            android:name=".TransmisionService"
+            android:exported="false"
+            android:foregroundServiceType="location" />
+    </application>
+
+</manifest>

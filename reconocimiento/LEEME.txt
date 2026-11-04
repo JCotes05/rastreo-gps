@@ -1,0 +1,36 @@
+ORBITA - Reconocimiento facial del conductor (P3-S1, pasos 5 y 6)
+============================================================
+
+Archivos
+  comun.py        Motor de reconocimiento (lo usan los otros dos y, luego, el servicio Bluetooth).
+  registrar.py    Registra el rostro de un conductor (con la camara o desde fotos).
+  reconocer.py    Prueba en vivo: muestra el nombre y la similitud de cada rostro.
+  servicio_reconocimiento.py   Atiende al celular por Bluetooth (paso 6): IDENTIFICAR -> CONDUCTOR;...
+  modelos/        YuNet (detecta rostros) y SFace (saca la "huella"), de OpenCV Zoo.
+
+Se crean al usarlo (NO se suben a GitHub, son datos biometricos):
+  conductores_rostros.json   huellas de los conductores registrados
+  fotos/<cedula>/            rostros recortados de cada registro (evidencia para el informe)
+  registro_identificaciones.csv   cada identificacion pedida por el celular (resultado, similitud, tiempo)
+
+Instalacion (una sola vez, en PowerShell, dentro de esta carpeta)
+  py -m pip install -r requirements.txt
+
+Uso
+  py registrar.py --cedula 1001000001 --nombre "Jesus Cotes"
+  py registrar.py --cedula 1001000002 --nombre "Nombre Apellido" --fotos C:\orbita\selfies_nombre
+  py registrar.py --listar
+  py registrar.py --borrar 1001000002
+  py reconocer.py
+  py reconocer.py --umbral 0.45 --camara 1
+  py servicio_reconocimiento.py --listar-puertos
+  py servicio_reconocimiento.py --puerto COM6
+  py servicio_reconocimiento.py --consola        (prueba sin celular)
+
+Protocolo con el celular (una linea por mensaje):
+  PING -> PONG
+  IDENTIFICAR -> IDENTIFICANDO, y luego:
+       CONDUCTOR;CED:1001000001;NOM:Jesus Cotes;SIM:0.82   |   NO_RECONOCIDO;SIM:0.21   |   ERROR;MOTIVO:...
+
+La cedula debe ser EXACTAMENTE la misma de la tabla 'conductores' del servidor.
+La carpeta del proyecto no debe tener tildes ni ñ en su ruta (ej. C:\orbita\reconocimiento).

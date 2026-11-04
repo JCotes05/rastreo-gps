@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>Mapa del viaje</title>
+<!--
+  P3-S2 · Mapa del viaje en la app del conductor.
+  La app (MapaViaje.kt) mete aquí Leaflet (desde la carpeta assets, sin depender de internet
+  para la librería) y luego llama a estas funciones:
+      orbita.seguir(true|false)   seguir al camión o mostrar toda la ruta
+      orbita.ruta({puntos, dist_m})  línea planeada (una vez por viaje)
+      orbita.viaje(viaje)         puntos de control, avance y alertas (cada consulta al servidor)
+      orbita.camion(lat, lon)     posición del celular (cada envío del GPS)
+-->
+<style>/*LEAFLET_CSS*/</style>
+<style>
+  html, body, #mapa { margin: 0; padding: 0; width: 100%; height: 100%; }
+  body { background: #DDE3EA; font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; -webkit-tap-highlight-color: transparent; }
+  .leaflet-container { background: #DDE3EA; font-family: inherit; }
+  .leaflet-control-attribution { font-size: 10px; }
+
+  /* Puntos de control: los mismos de la página web */
+  .marca { background: none; border: 0; }
+  .pt {
+    width: 26px; height: 26px; border-radius: 50%; border: 3px solid #fff; box-sizing: border-box;
+    display: flex; align-items: center; justify-content: center; color: #fff; font-size: 11.5px; font-weight: 800;
+    box-shadow: 0 2px 6px rgba(11, 31, 58, 0.45);
+  }
+  .pt.extremo { width: 30px; height: 30px; font-size: 13px; border-color: #0B1F3A; }
+
+  /* El camión (este celular): punto azul con una onda */
+  .camion { position: relative; width: 24px; height: 24px; }
+  .camion .onda {
+    position: absolute; left: 0; top: 0; width: 24px; height: 24px; border-radius: 50%;
+    background: rgba(0, 150, 254, 0.35); animation: onda 2.2s ease-out infinite;
+  }
+  .camion .nucleo {
+    position: absolute; left: 0; top: 0; width: 24px; height: 24px; border-radius: 50%; box-sizing: border-box;
+    background: #0096FE; border: 4px solid #fff; box-shadow: 0 0 0 1px rgba(11, 31, 58, 0.35), 0 2px 8px rgba(11, 31, 58, 0.5);
+  }
+  @keyframes onda { from { transform: scale(1); opacity: 0.9; } to { transform: scale(3.4); opacity: 0; } }
+
+  .alerta div {
+    width: 26px; height: 26px; border-radius: 50%; background: #C62828; color: #fff; border: 2px solid #fff;
+    display: flex; align-items: center; justify-content: center; font-size: 13px; box-shadow: 0 2px 6px rgba(0, 0, 0, 0.35);
+  }
+
+  /* Botón para volver a centrar en el camión */
+  #centrar {
+    position: absolute; z-index: 1000; right: 10px; bottom: 92px; width: 40px; height: 40px; border-radius: 10px;
+    background: #fff; color: #1F3B5C; border: 0; box-shadow: 0 1px 5px rgba(0, 0, 0, 0.35);
+    display: flex; align-items: center; justify-content: center; padding: 0;
+  }
+  #centrar.activo { background: #0096FE; color: #fff; }
+  #centrar svg { width: 22px; height: 22px; }
+
+  .leaflet-popup-content { margin: 10px 12px; font-size: 13px; line-height: 1.35; color: #0B1F3A; }
+  .leaflet-popup-content b { font-weight: 800; }
+  .gris { color: #5C6B80; }
+</style>
+</head>
+<body>
+<div id="mapa"></div>
+<button id="centrar" type="button" aria-label="Centrar en el camión">
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round">
+    <circle cx="12" cy="12" r="4.2"></circle><path d="M12 2.5v3.2M12 18.3v3.2M2.5 12h3.2M18.3 12h3.2"></path>
+  </svg>
+</button>
+<script>/*LEAFLET_JS*/</script>
+<script>
+(function () {
+  'use strict';
+  var COLOR_NIVEL = { a_tiempo: '#0F766E', aviso: '#D49100', alerta: '#C62828', pendiente: '#8A96A6' };
+  var AZUL_RUTA = '#1565D8', GRIS_PASADO = '#8A96A6';
+
+  var mapa = L.map('mapa', { zoomControl: false }).setView([10.99, -74.81], 12);
+  mapa.attributionControl.setPrefix(false);
+  L.control.zoom({ position: 'bottomright' }).addTo(mapa);
+
+  // Mapa base: OpenStreetMap, como la página. Si sus teselas fallan varias veces seguidas
+  // (por ejemplo, si bloquean la petición), se cambia a CARTO, que usa los mismos datos.
+  var FUENTES = [
+    { url: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', sub: 'abc', attr: '&copy; OpenStreetMap' },
+    { url: 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', sub: 'abcd', attr: '&copy; OpenStreetMap &copy; CARTO' }
+  ];
+  var capaBase = null, fuente = 0, fallos = 0;
+  function ponerBase(i) {
+    if (capaBase) { mapa.removeLayer(capaBase); }
+    var f = FUENTES[i];
+    capaBase = L.tileLayer(f.url, { subdomains: f.sub, attribution: f.attr, maxZoom: 19 });
+    capaBase.on('tileload', function () { fallos = 0; });
+    capaBase.on('tileerror', function () {
+      fallos += 1;
+      if (fallos >= 4 && fuente + 1 < FUENTES.length) { fuente += 1; fallos = 0; ponerBase(fuente); }
+    });
+    capaBase.addTo(mapa);
+  }
+  ponerBase(0);
+
+  mapa.createPane('ruta');
+  mapa.getPane('ruta').style.zIndex = 390;
+  var capaRuta = L.layerGroup().addTo(mapa);
+  var capaPuntos = L.layerGroup().addTo(mapa);
+  var capaAlertas = L.layerGroup().addTo(mapa);
+
+  var ruta = null;              // { puntos: [[lat, lon]...], dist_m: [...] }
+  var lineaPasada = null, lineaFalta = null, contorno = null;
+  var avance = 0;
+  var marcaCamion = null, rastro = null, posicion = null;
+  var seguir = true, encuadrado = false;
+  var firmaPuntos = '', firmaAlertas = '';
+  var botonCentrar = document.getElementById('centrar');
+
+  function escapar(t) {
+    return String(t == null ? '' : t).replace(/[&<>"']/g, function (c) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+    });
+  }
+  function hora(iso) { return iso && iso.length >= 16 ? iso.substring(11, 16) : '—'; }
+  function textoRetraso(s) {
+    if (s === null || s === undefined) { return ''; }
+    if (Math.abs(s) < 60) { return 'a tiempo'; }
+    var m = Math.round(Math.abs(s) / 60);
+    return m + ' min ' + (s > 0 ? 'tarde' : 'antes');
+  }
+  function km(m) { return (m / 1000).toFixed(1).replace('.', ','); }
+
+  // ---- Seguir al camión o ver toda la ruta ----
+  function pintarBoton() { botonCentrar.className = seguir ? 'activo' : ''; }
+  function encuadrar() {
+    var limites = null;
+    if (ruta && ruta.puntos.length) { limites = L.latLngBounds(ruta.puntos); }
+    if (posicion) { limites = limites ? limites.extend(posicion) : L.latLngBounds([posicion, posicion]); }
+    if (!limites) { return; }
+    if (limites.getNorthEast().equals(limites.getSouthWest())) { mapa.setView(limites.getCenter(), 16); }
+    else { mapa.fitBounds(limites, { padding: [40, 40], maxZoom: 16 }); }
+    encuadrado = true;
+  }
+  function centrarEnCamion(animar) {
+    if (!posicion) { encuadrar(); return; }
+    mapa.setView(posicion, Math.max(mapa.getZoom(), 16), { animate: !!animar });
+  }
+  mapa.on('dragstart', function () { if (seguir) { seguir = false; pintarBoton(); } });
+  botonCentrar.addEventListener('click', function () {
+    if (seguir || !posicion) { seguir = false; encuadrar(); }   // segundo toque: ver toda la ruta
+    else { seguir = true; centrarEnCamion(true); }
+    pintarBoton();
+  });
+
+  // ---- Ruta planeada: lo recorrido en gris, lo que falta en azul ----
+  function partirRuta() {
+    if (!ruta) { return; }
+    var p = ruta.puntos, d = ruta.dist_m || [], i = 0;
+    var corte = p[0];
+    if (avance > 0 && d.length === p.length) {
+      while (i < d.length - 2 && d[i + 1] < avance) { i += 1; }
+      var tramo = d[i + 1] - d[i], f = tramo > 0 ? Math.min(1, Math.max(0, (avance - d[i]) / tramo)) : 0;
+      corte = [p[i][0] + (p[i + 1][0] - p[i][0]) * f, p[i][1] + (p[i + 1][1] - p[i][1]) * f];
+    }
+    var pasada = avance > 0 ? p.slice(0, i + 1).concat([corte]) : [];
+    var falta = avance > 0 ? [corte].concat(p.slice(i + 1)) : p;
+    lineaPasada.setLatLngs(pasada);
+    lineaFalta.setLatLngs(falta);
+  }
+
+  // ---- Puntos de control ----
+  function icono(p) {
+    var color = COLOR_NIVEL[p.nivel || 'pendiente'] || COLOR_NIVEL.pendiente;
+    var extremo = p.tipo === 'salida' || p.tipo === 'llegada';
+    var texto = p.tipo === 'salida' ? 'S' : p.tipo === 'llegada' ? 'L' : p.orden;
+    var lado = extremo ? 30 : 26;
+    return L.divIcon({ className: 'marca', iconSize: [lado, lado], iconAnchor: [lado / 2, lado / 2],
+      html: '<div class="pt' + (extremo ? ' extremo' : '') + '" style="background:' + color + '">' + texto + '</div>' });
+  }
+  function textoPopup(p) {
+    var t = '<b>' + (p.tipo === 'control' ? p.orden + '. ' : '') + escapar(p.nombre) + '</b><br>' +
+      '<span class="gris">Km ' + km(p.distancia_m) + ' · plan ' + (p.hora_plan ? hora(p.hora_plan) : 'min ' + Math.round(p.tiempo_plan_s / 60)) + '</span>';
+    if (p.hora_real) { t += '<br>Pasó ' + hora(p.hora_real) + (p.tipo === 'salida' ? '' : ' · ' + textoRetraso(p.retraso_s)); }
+    return t;
+  }
+
+  window.orbita = {
+    seguir: function (si) { seguir = !!si; pintarBoton(); },
+
+    ruta: function (r) {
+      if (!r || !r.puntos || r.puntos.length < 2) { return; }
+      ruta = r;
+      capaRuta.clearLayers();
+      contorno = L.polyline(r.puntos, { color: '#FFFFFF', weight: 11, opacity: 0.95, lineJoin: 'round', interactive: false, pane: 'ruta' }).addTo(capaRuta);
+      lineaPasada = L.polyline([], { color: GRIS_PASADO, weight: 6, opacity: 1, lineJoin: 'round', lineCap: 'round', interactive: false, pane: 'ruta' }).addTo(capaRuta);
+      lineaFalta = L.polyline([], { color: AZUL_RUTA, weight: 6, opacity: 1, lineJoin: 'round', lineCap: 'round', interactive: false, pane: 'ruta' }).addTo(capaRuta);
+      partirRuta();
+      if (!seguir || !posicion) { encuadrar(); }
+    },
+
+    viaje: function (v) {
+      if (!v) { return; }
+      avance = v.estado === 'en_destino' ? 1e12 : ((v.progreso && v.progreso.avance_m) || 0);   // al llegar: toda la ruta recorrida
+      partirRuta();
+
+      var puntos = v.puntos_control || [];
+      var firma = JSON.stringify(puntos.map(function (p) { return [p.orden, p.nivel, p.hora_real, p.hora_plan]; }));
+      if (firma !== firmaPuntos) {
+        firmaPuntos = firma;
+        capaPuntos.clearLayers();
+        puntos.forEach(function (p) {
+          L.marker([p.lat, p.lon], { icon: icono(p), zIndexOffset: p.tipo === 'control' ? 100 : 200 })
+            .bindPopup(textoPopup(p)).addTo(capaPuntos);
+        });
+      }
+
+      var activas = (v.alertas || []).filter(function (a) { return a.activa && a.lat != null && a.lon != null; });
+      var firmaA = JSON.stringify(activas.map(function (a) { return a.id; }));
+      if (firmaA !== firmaAlertas) {
+        firmaAlertas = firmaA;
+        capaAlertas.clearLayers();
+        activas.forEach(function (a) {
+          L.marker([a.lat, a.lon], { icon: L.divIcon({ className: 'alerta', iconSize: [26, 26], iconAnchor: [13, 13], html: '<div>&#9888;</div>' }),
+                                     zIndexOffset: 300 })
+            .bindPopup(a.tipo === 'desvio' ? '<b>Desvío</b><br>Aquí se salió de la ruta' : '<b>Retraso</b>').addTo(capaAlertas);
+        });
+      }
+      if (!encuadrado && !seguir) { encuadrar(); }
+    },
+
+    camion: function (lat, lon) {
+      if (typeof lat !== 'number' || typeof lon !== 'number' || isNaN(lat) || isNaN(lon)) { return; }
+      var primera = !posicion;
+      posicion = [lat, lon];
+      if (!marcaCamion) {
+        marcaCamion = L.marker(posicion, { zIndexOffset: 1000, interactive: false,
+          icon: L.divIcon({ className: 'marca', iconSize: [24, 24], iconAnchor: [12, 12],
+                            html: '<div class="camion"><div class="onda"></div><div class="nucleo"></div></div>' }) }).addTo(mapa);
+        rastro = L.polyline([posicion], { color: '#0B1F3A', weight: 3, opacity: 0.55, dashArray: '2 7', lineCap: 'round', interactive: false }).addTo(mapa);
+      } else {
+        marcaCamion.setLatLng(posicion);
+        var r = rastro.getLatLngs();
+        var ultimo = r[r.length - 1];
+        if (!ultimo || ultimo.distanceTo(posicion) >= 8) {
+          rastro.addLatLng(posicion);
+          if (r.length > 600) { rastro.setLatLngs(r.slice(r.length - 500)); }
+        }
+      }
+      if (seguir) { centrarEnCamion(!primera); }
+      else if (primera && !ruta) { encuadrar(); }
+    }
+  };
+  pintarBoton();
+})();
+</script>
+</body>
+</html>

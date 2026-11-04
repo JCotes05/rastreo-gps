@@ -8,14 +8,27 @@ SSH para actualizar el código en producción.
 ## Estructura
 
 ```
-servidor/       → basedatos.py, listener.py, servidor_web.py, ver_registros.py
+servidor/       → basedatos.py, listener.py, servidor_web.py, ver_registros.py,
+                   rutas.py, api_envios.py, monitoreo.py (P3-S2)
 web/             → index.html (la página, servida como archivo estático por Nginx)
 nginx/           → un archivo de configuración POR INSTANCIA (dominios y
                    certificados SSL distintos, no pueden ser un solo archivo)
 systemd/         → los .service (Ubuntu y Amazon Linux)
-android/         → MainActivity.kt
+android/         → proyecto completo de la app (Android Studio, Kotlin + Compose)
+reconocimiento/  → reconocimiento facial del conductor en el PC (P3-S1, ver LEEME.txt)
+pruebas/         → pruebas automáticas y simulador_gps.py
+sql/             → tablas del P3-S2 y limpieza de datos de prueba
 .github/workflows/desplegar.yml → el flujo de despliegue automático
 ```
+
+`android/` y `reconocimiento/` **no se despliegan** a las instancias: el
+flujo solo copia los archivos de `servidor/`, `web/` y `nginx/`.
+
+- **App:** abrir la carpeta `android/` en Android Studio, o compilar con
+  `gradlew assembleDebug`. El APK queda en `android/app/build/outputs/apk/debug/`.
+- **Reconocimiento:** los datos biométricos (`conductores_rostros.json`,
+  `fotos/`, `registro_identificaciones.csv`) nunca se suben; cada PC los
+  crea al registrar a los conductores.
 
 ## Cómo funciona el despliegue automático
 
