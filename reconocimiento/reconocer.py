@@ -1,14 +1,15 @@
 """
-reconocer.py — Prueba en vivo del reconocimiento facial (P3-S1, paso 5).
+reconocer.py â€” Prueba en vivo del reconocimiento facial (P3-S1, paso 5).
 
     py reconocer.py
     py reconocer.py --camara 1
-    py reconocer.py --umbral 0.45
+    py reconocer.py --umbral 0.60
 
-Abre la cámara y marca cada rostro:
-  · verde  = conductor reconocido, con su nombre y la similitud
-  · rojo   = "Desconocido" (nadie supera el umbral), con la similitud del más parecido
-  · gris   = rostro muy lejos para evaluarlo
+Abre la cÃ¡mara y marca cada rostro:
+  Â· verde  = conductor reconocido, con su nombre y la similitud
+  Â· rojo   = "Desconocido" (nadie supera su umbral: similitud < umbral exigido)
+             o "Dudoso" (supera el umbral pero no le saca ventaja al segundo mÃ¡s parecido)
+  Â· gris   = rostro muy lejos para evaluarlo
 Al cerrar (tecla Q) imprime un resumen para la tabla de pruebas del informe.
 """
 
@@ -23,27 +24,28 @@ from comun import (    # comun va antes que cv2: configura OpenCV para que no ll
 import cv2
 
 VENTANA = "Orbita - Prueba de reconocimiento"
-DESCONOCIDO = "Desconocido"
+DESCONOCIDO = "Desconocido"      # nadie supera su umbral
+DUDOSO = "Dudoso"                # supera el umbral, pero se parece casi igual a otro conductor
 
 
 def imprimir_resumen(conteo, cuadros, umbral):
     print(f"\nResumen de la prueba ({cuadros} cuadros de video, umbral {umbral:.2f}):")
     if not conteo:
-        print("  No se evaluó ningún rostro.")
+        print("  No se evaluÃ³ ningÃºn rostro.")
         return
     print(f"  {'Resultado':<32} {'Cuadros':>8}   Similitud promedio")
     for etiqueta, (veces, suma) in sorted(conteo.items(), key=lambda par: -par[1][0]):
         print(f"  {etiqueta:<32} {veces:>8}   {suma / veces:.2f}")
-    print("  (Para 'Desconocido', la similitud es la del conductor más parecido.)\n")
+    print("  (Para 'Desconocido', la similitud es la del conductor mÃ¡s parecido.)\n")
 
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description="Prueba en vivo del reconocimiento facial de Orbita.")
-    parser.add_argument("--camara", type=int, default=0, help="Número de la cámara (0 = la del portátil)")
-    parser.add_argument("--umbral", type=float, default=UMBRAL, help=f"Similitud mínima para aceptar (por defecto {UMBRAL})")
+    parser.add_argument("--camara", type=int, default=0, help="NÃºmero de la cÃ¡mara (0 = la del portÃ¡til)")
+    parser.add_argument("--umbral", type=float, default=UMBRAL, help=f"Similitud mÃ­nima para aceptar (por defecto {UMBRAL})")
     args = parser.parse_args(argv)
     if not 0 < args.umbral < 1:
-        salir_con_error("El umbral debe estar entre 0 y 1 (por ejemplo 0.40).")
+        salir_con_error("El umbral debe estar entre 0 y 1 (por ejemplo 0.55).")
 
     base = BaseRostros()
     if not base.conductores:
@@ -54,7 +56,7 @@ def main(argv=None):
     motor = MotorFacial()
     camara = abrir_camara(args.camara)
     cv2.namedWindow(VENTANA, cv2.WINDOW_AUTOSIZE)
-    print("Se abrió la ventana de la cámara. Presiona Q para terminar.")
+    print("Se abriÃ³ la ventana de la cÃ¡mara. Presiona Q para terminar.")
 
     conteo = {}          # etiqueta -> [cuadros, suma de similitudes]
     cuadros = 0
@@ -62,7 +64,7 @@ def main(argv=None):
         while True:
             ok, cuadro = camara.read()
             if not ok:
-                print("La cámara dejó de enviar imágenes.")
+                print("La cÃ¡mara dejÃ³ de enviar imÃ¡genes.")
                 break
             cuadros += 1
             vista = cuadro.copy()
@@ -71,12 +73,17 @@ def main(argv=None):
                 if rostro[2] < ANCHO_MIN_RECONOCER:
                     dibujar_rostro(vista, rostro, "Acercate", GRIS)
                     continue
-                cedula, nombre, similitud = base.identificar(motor.huella(cuadro, rostro), args.umbral)
-                if cedula:
-                    etiqueta, color = nombre, VERDE
+                d = base.evaluar(motor.huella(cuadro, rostro), args.umbral)
+                similitud = d["similitud"]
+                if d["cedula"]:
+                    etiqueta, color, texto = d["nombre"], VERDE, f"{d['nombre']}  {similitud:.2f}"
+                elif d["motivo"] == "poca_ventaja":
+                    etiqueta, color = DUDOSO, ROJO
+                    texto = f"{DUDOSO}  {similitud:.2f} vs {d['segunda']:.2f}"
                 else:
                     etiqueta, color = DESCONOCIDO, ROJO
-                dibujar_rostro(vista, rostro, f"{etiqueta}  {similitud:.2f}", color)
+                    texto = f"{DESCONOCIDO}  {similitud:.2f} < {d['umbral']:.2f}"
+                dibujar_rostro(vista, rostro, texto, color)
                 registro = conteo.setdefault(etiqueta, [0, 0.0])
                 registro[0] += 1
                 registro[1] += similitud

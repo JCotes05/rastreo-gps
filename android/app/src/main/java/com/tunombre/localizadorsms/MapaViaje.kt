@@ -54,12 +54,39 @@ fun MapaViaje(
     var listo by remember { mutableStateOf(false) }
     val webView = remember {
         WebView(contexto).apply {
+            // IMPORTANTE: AndroidView deja el WebView con alto WRAP_CONTENT y, en ese modo, Chromium
+            // calcula los "height: 100%" de la página como 0 px: el mapa quedaba de alto 0 (rectángulo gris).
+            // Con MATCH_PARENT la página toma el alto que le da Compose (240/270 dp).
+            layoutParams = android.view.ViewGroup.LayoutParams(
+                android.view.ViewGroup.LayoutParams.MATCH_PARENT,
+                android.view.ViewGroup.LayoutParams.MATCH_PARENT
+            )
             settings.javaScriptEnabled = true
             settings.domStorageEnabled = true
             setBackgroundColor(0xFFDDE3EA.toInt())
+            val depurar = (contexto.applicationInfo.flags and android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE) != 0
+            if (depurar) {
+                WebView.setWebContentsDebuggingEnabled(true)
+                webChromeClient = object : android.webkit.WebChromeClient() {
+                    override fun onConsoleMessage(m: android.webkit.ConsoleMessage): Boolean {
+                        android.util.Log.d("MapaViaje", "${m.messageLevel()} ${m.sourceId()}:${m.lineNumber()} ${m.message()}")
+                        return true
+                    }
+                }
+            }
             webViewClient = object : WebViewClient() {
+                override fun onPageStarted(view: WebView?, url: String?, favicon: android.graphics.Bitmap?) {
+                    if (depurar) android.util.Log.d("MapaViaje", "onPageStarted $url")
+                }
                 override fun onPageFinished(view: WebView?, url: String?) {
+                    if (depurar) android.util.Log.d("MapaViaje", "onPageFinished $url tam=${view?.width}x${view?.height}")
                     listo = true
+                }
+                override fun onReceivedError(view: WebView?, req: android.webkit.WebResourceRequest?, err: android.webkit.WebResourceError?) {
+                    if (depurar) android.util.Log.e("MapaViaje", "error ${req?.url} ${err?.errorCode} ${err?.description}")
+                }
+                override fun onReceivedHttpError(view: WebView?, req: android.webkit.WebResourceRequest?, res: android.webkit.WebResourceResponse?) {
+                    if (depurar) android.util.Log.e("MapaViaje", "http ${res?.statusCode} ${req?.url}")
                 }
             }
             // Con una dirección https como base, las teselas de OpenStreetMap reciben un "Referer"
