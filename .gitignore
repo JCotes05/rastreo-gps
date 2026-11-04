@@ -3,6 +3,11 @@ servidor/nombre.txt
 contrasena_bd.txt
 servidor/contrasena_bd.txt
 
+# P3-S2: clave de openrouteservice (solo en cada servidor) y modo demostración
+clave_ors.txt
+servidor/clave_ors.txt
+modo_demo.txt
+
 __pycache__/
 *.pyc
 
