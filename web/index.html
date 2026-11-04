@@ -469,12 +469,211 @@
     body.menu-abierto .tarjeta-planilla { display: none; }
     .planilla-nombre { font-size: 16px; }
   }
+  /* =====================================================================
+     ENVÍOS (P3-S2)
+       · Tercer modo del menú, con su propio mapa: lista, nuevo envío y detalle.
+       · En Tiempo Real: tarjeta del viaje (avance, retraso, alertas) y la
+         ruta planeada con sus puntos de control.
+     ===================================================================== */
+  #mapa-envios {
+    position: fixed; top: 0; right: 0; bottom: 0; left: 0;
+    z-index: 1; background: var(--gris-azul); visibility: hidden;
+  }
+  body.modo-envios #mapa, body.modo-envios #mapa-historico { visibility: hidden; }
+  body.modo-envios #mapa-envios { visibility: visible; }
+  body.modo-envios .ventana-datos, body.modo-envios .boton-centrar, body.modo-envios .punto-vivo,
+  body.modo-envios .tarjeta-planilla, body.modo-envios .tarjeta-viaje, body.modo-historicos .tarjeta-viaje { display: none !important; }
+
+  .selector-modo { grid-template-columns: repeat(3, 1fr); }
+  .modo { position: relative; white-space: nowrap; }
+  .boton-menu { position: relative; }
+  .insignia {
+    position: absolute; top: -6px; right: -6px; min-width: 19px; height: 19px; padding: 0 5px;
+    border-radius: 999px; background: #C62828; color: #fff; font-size: 11px; font-weight: 800; line-height: 19px; text-align: center;
+    box-shadow: 0 0 0 2px var(--medio);
+  }
+  .boton-menu .insignia { box-shadow: 0 0 0 2px var(--oscuro); }
+
+  /* Chips de estado y de retraso */
+  .chip {
+    display: inline-flex; align-items: center; gap: 3px; padding: 2px 8px; border-radius: 999px;
+    font-size: 10.5px; font-weight: 800; letter-spacing: 0.03em; white-space: nowrap; line-height: 1.5;
+  }
+  .chip-asignado { background: rgba(31, 59, 92, 0.14); color: var(--medio); }
+  .chip-en_ruta { background: #1565D8; color: #fff; }
+  .chip-en_destino { background: #0F766E; color: #fff; }
+  .chip-finalizado, .chip-cancelado { background: rgba(43, 47, 54, 0.12); color: var(--carbon); }
+  .chip-a_tiempo { background: rgba(15, 118, 110, 0.14); color: #0F766E; }
+  .chip-aviso { background: rgba(242, 169, 0, 0.24); color: #7A4F00; }
+  .chip-alerta { background: #C62828; color: #fff; }
+  .chip-pendiente { background: rgba(167, 177, 190, 0.3); color: var(--medio); }
+  .chip-recomendado { background: #1565D8; color: #fff; }
+
+  /* Tarjetas de envío */
+  .boton-nuevo-envio { width: 100%; margin-bottom: 10px; padding: 12px 8px; font-size: 13.5px; }
+  .tarjeta-envio, .caja-clara {
+    background: var(--claro); color: var(--oscuro);
+    border-radius: 14px; border-left: 7px solid var(--gris-azul); padding: 10px 13px 11px;
+  }
+  .tarjeta-envio { cursor: pointer; transition: transform 0.12s ease, box-shadow 0.12s ease; }
+  .tarjeta-envio:hover, .tarjeta-envio:focus-visible { transform: translateY(-2px); box-shadow: 0 8px 18px -10px rgba(0, 0, 0, 0.55); outline: none; }
+  .lista-envios { display: flex; flex-direction: column; gap: 9px; }
+  .envio-cabecera { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+  .envio-codigo { font-size: 13.5px; font-weight: 800; letter-spacing: 0.01em; margin-right: 2px; }
+  .envio-codigo.grande { font-size: 16px; }
+  .envio-ruta { margin-top: 5px; font-size: 12.5px; font-weight: 700; line-height: 1.35; overflow-wrap: anywhere; }
+  .envio-ruta.grande { font-size: 13.5px; }
+  .flechita { color: var(--medio); font-weight: 800; }
+  .envio-meta { display: flex; flex-wrap: wrap; gap: 3px 12px; margin-top: 4px; font-size: 11.5px; font-weight: 600; color: var(--medio); }
+  .barra-avance { height: 6px; margin-top: 8px; border-radius: 6px; background: rgba(31, 59, 92, 0.15); overflow: hidden; }
+  .barra-avance.grande { height: 8px; margin: 10px 0 2px; }
+  .barra-avance > i { display: block; height: 100%; border-radius: 6px; background: #1565D8; transition: width 0.4s ease; }
+  .caja-clara .tarjeta-datos { margin-top: 8px; }
+  .tarjeta-etq.ancha { width: 70px; }
+  .caja-clara .tarjeta-linea { margin-top: 5px; font-size: 12.5px; }
+  .caja-clara .tarjeta-val { font-weight: 700; min-width: 0; overflow-wrap: anywhere; }
+  .gris { color: var(--medio); font-weight: 600; }
+  .nota-envio { margin-top: 8px; padding: 8px 10px; border-radius: 9px; background: rgba(31, 59, 92, 0.09); font-size: 12.5px; line-height: 1.45; }
+  .btn-ancho { display: block; width: 100%; margin-top: 12px; }
+  .enlace-detalle { display: block; margin-top: 8px; padding: 0; border: 0; background: none; color: #1565D8; font-size: 12.5px; font-weight: 800; cursor: pointer; }
+
+  /* Puntos de control y alertas */
+  .lista-puntos { padding-top: 4px; padding-bottom: 4px; border-left-color: var(--oscuro); }
+  .punto-control { display: grid; grid-template-columns: 24px 1fr auto; gap: 9px; align-items: center; padding: 7px 0; border-top: 1px solid rgba(167, 177, 190, 0.55); }
+  .punto-control:first-child { border-top: 0; }
+  .num-punto { width: 22px; height: 22px; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: #fff; font-size: 11px; font-weight: 800; }
+  .punto-nombre { min-width: 0; font-size: 12.5px; font-weight: 700; line-height: 1.3; overflow-wrap: anywhere; }
+  .punto-nombre small { display: block; margin-top: 1px; font-size: 11px; font-weight: 600; color: var(--medio); }
+  .alerta-item {
+    display: flex; align-items: center; gap: 9px; margin-top: 6px; padding: 8px 10px; border-radius: 10px;
+    background: rgba(230, 233, 239, 0.14); color: var(--claro); font-size: 12.5px;
+  }
+  .alerta-item.activa { background: #C62828; color: #fff; }
+  .alerta-icono { flex: none; font-size: 15px; }
+  .alerta-texto { flex: 1; min-width: 0; line-height: 1.3; }
+  .alerta-texto small { display: block; font-size: 11px; font-weight: 600; opacity: 0.85; }
+  .btn-visto { flex: none; border: 0; border-radius: 8px; padding: 6px 10px; background: #fff; color: #C62828; font-size: 11.5px; font-weight: 800; cursor: pointer; }
+
+  /* Formulario de nuevo envío */
+  .enlace-ejemplo { display: block; margin: 0 2px 10px auto; padding: 0; border: 0; background: none; color: var(--gris-azul); font-size: 12px; font-weight: 700; text-decoration: underline; cursor: pointer; }
+  .panel-titulo { display: flex; align-items: center; gap: 8px; margin-bottom: 2px; font-size: 12px; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase; }
+  .letra-punto { width: 20px; height: 20px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; color: #fff; font-size: 11px; font-weight: 800; letter-spacing: 0; }
+  .panel input[type=text], .panel input[type=tel], .panel input[type=number], .panel select {
+    width: 100%; border: 2px solid transparent; border-radius: 10px; padding: 8px 10px;
+    background: var(--claro); color: var(--oscuro);
+    font-family: inherit; font-size: 13px; font-weight: 600; color-scheme: light;
+  }
+  .panel input[type=datetime-local] { border: 2px solid transparent; }
+  .panel .campo-error, .candidatos.campo-error { border-color: #FF8A80 !important; box-shadow: 0 0 0 2px rgba(255, 138, 128, 0.35); }
+  .dos-campos { display: grid; grid-template-columns: 1fr 1fr; gap: 0 8px; }
+  .dos-campos > div { min-width: 0; }
+  .fila-busqueda { display: flex; gap: 6px; }
+  .fila-busqueda input { flex: 1; min-width: 0; }
+  .btn-chico {
+    flex: none; border: 0; border-radius: 10px; padding: 0 11px; min-height: 36px; cursor: pointer;
+    background: var(--oscuro); color: var(--claro); font-size: 12px; font-weight: 800;
+  }
+  .btn-chico.activo { background: var(--claro); color: var(--oscuro); box-shadow: inset 0 0 0 2px var(--oscuro); }
+  .coords-punto { margin-top: 5px; font-size: 11.5px; font-weight: 700; color: var(--gris-azul); }
+  .coords-punto:empty { display: none; }
+  .resultados-lugar { display: flex; flex-direction: column; gap: 4px; margin-top: 6px; }
+  .resultados-lugar:empty { display: none; }
+  .resultado-lugar {
+    width: 100%; padding: 7px 9px; border: 0; border-radius: 8px; text-align: left; cursor: pointer;
+    background: rgba(230, 233, 239, 0.14); color: var(--claro); font-size: 12px; font-weight: 600; line-height: 1.35;
+  }
+  .resultado-lugar:hover { background: rgba(230, 233, 239, 0.26); }
+  .sin-resultados { font-size: 12px; color: var(--gris-azul); }
+  .boton-calcular { width: 100%; padding: 12px 8px; font-size: 13.5px; }
+  .nota-ruta { margin: 8px 0 0; font-size: 11.5px; line-height: 1.4; color: var(--medio); font-weight: 600; }
+  .candidatos { border: 2px solid transparent; border-radius: 12px; }
+  .candidato {
+    display: flex; align-items: flex-start; gap: 10px; margin-top: 7px; padding: 9px 12px;
+    background: var(--claro); color: var(--oscuro); border-radius: 12px; border: 2px solid transparent; cursor: pointer;
+  }
+  .candidato:first-child { margin-top: 0; }
+  .candidato.elegido { border-color: #1565D8; }
+  .candidato input { margin: 3px 0 0; accent-color: #1565D8; }
+  .candidato b { font-size: 13.5px; }
+  .candidato small { display: block; margin-top: 2px; font-size: 11.5px; font-weight: 600; color: var(--medio); line-height: 1.35; }
+
+  /* Marcas del mapa */
+  .marca-punto { background: none; border: 0; }
+  .marca-punto-in, .marca-letra {
+    width: 26px; height: 26px; border-radius: 50%; border: 3px solid #fff; box-sizing: border-box;
+    display: flex; align-items: center; justify-content: center; color: #fff; font-size: 11.5px; font-weight: 800;
+    box-shadow: 0 2px 6px rgba(11, 31, 58, 0.45); font-family: 'Manrope', system-ui, sans-serif;
+  }
+  .marca-punto-in.tipo-salida, .marca-punto-in.tipo-llegada { border-color: var(--oscuro); }
+  .marca-letra { width: 30px; height: 30px; font-size: 13px; cursor: grab; }
+  .marca-alerta { background: none; border: 0; }
+  .marca-alerta div {
+    width: 24px; height: 24px; border-radius: 50%; background: #C62828; color: #fff; border: 2px solid #fff;
+    display: flex; align-items: center; justify-content: center; font-size: 12px; box-shadow: 0 2px 6px rgba(0, 0, 0, 0.35);
+  }
+  .icono-flota { background: none; border: 0; }
+  .flota-in {
+    width: 34px; height: 34px; border-radius: 50%; display: flex; align-items: center; justify-content: center;
+    font-size: 19px; background: rgba(230, 233, 239, 0.95); border: 3px solid var(--gris-azul); box-shadow: 0 2px 8px rgba(11, 31, 58, 0.4);
+  }
+  .flota-in.estado-disponible { border-color: #0F766E; }
+  .flota-in.estado-asignado { border-color: #D49100; }
+  .flota-in.estado-en_ruta { border-color: #1565D8; }
+  .icono-flota.atenuado { opacity: 0.4; }
+  .leaflet-container.armado { cursor: crosshair !important; }
+
+  /* Tarjeta del viaje en Tiempo Real */
+  .tarjeta-viaje {
+    position: fixed; top: 80px; right: 14px; z-index: 1190;
+    width: 320px; max-width: calc(100vw - 28px); padding: 10px 14px 12px;
+    background: rgba(230, 233, 239, 0.97); color: var(--oscuro);
+    border-radius: 16px; border-left: 7px solid #1565D8; box-shadow: var(--sombra);
+  }
+  .tarjeta-viaje.con-alerta { border-left-color: #C62828; }
+  .viaje-cabecera {
+    display: flex; align-items: center; gap: 8px; width: 100%; padding: 0; border: 0; background: none;
+    color: inherit; text-align: left; cursor: pointer;
+  }
+  .viaje-chips { flex: 1; min-width: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 5px; }
+  .viaje-pct { flex: none; font-size: 13px; font-weight: 800; font-variant-numeric: tabular-nums; }
+  .viaje-flecha { flex: none; transition: transform 0.2s ease; transform: rotate(180deg); }
+  .tarjeta-viaje.plegada .viaje-flecha { transform: none; }
+  .viaje-linea { margin-top: 6px; font-size: 12.5px; font-weight: 600; line-height: 1.35; }
+  .tarjeta-viaje .alerta-item { margin-top: 8px; }
+  .tarjeta-viaje .tarjeta-datos { margin-top: 8px; }
+  .planilla-envio { margin-top: 10px; padding-top: 8px; border-top: 1px solid rgba(167, 177, 190, 0.7); }
+  .planilla-envio .planilla-val { font-size: 12.5px; overflow-wrap: anywhere; }
+
+  /* Históricos: el envío de cada recorrido */
+  .tarjeta-envio-linea { display: flex; align-items: baseline; gap: 6px; min-width: 0; margin-top: 4px; font-size: 12px; font-weight: 600; }
+  .tarjeta-envio-linea span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--medio); }
+  .detalle-envio-hist { margin-top: 10px; padding-top: 9px; border-top: 1px solid rgba(167, 177, 190, 0.7); }
+  .detalle-envio-hist:empty { display: none; }
+  .detalle-envio-hist .planilla-titulo { display: block; margin-bottom: 4px; }
+  .leyenda-planeada { display: flex; align-items: center; gap: 7px; margin-top: 7px; font-size: 11.5px; font-weight: 600; color: var(--medio); }
+  .leyenda-planeada i { width: 26px; height: 0; border-top: 4px dotted #5C6B80; flex: none; }
+
+  @media (max-width: 1000px) {
+    body.menu-abierto .tarjeta-viaje { display: none; }
+  }
+  @media (max-width: 720px) {
+    .tarjeta-viaje {
+      top: calc(100px + env(safe-area-inset-top, 0px)); left: 10px; right: 10px; width: auto; max-width: none;
+      padding: 8px 12px 9px; border-radius: 12px; border-left-width: 6px;
+    }
+    .tarjeta-viaje .tarjeta-datos b { font-size: 12.5px; }
+    .modo { font-size: 12px; padding: 9px 4px; }
+    .panel input[type=text], .panel input[type=tel], .panel input[type=number], .panel select { font-size: 16px; padding: 7px 10px; }
+    .btn-chico { min-height: 40px; }
+    .boton-nuevo-envio, .boton-calcular { min-height: 44px; }
+  }
 </style>
 </head>
 <body>
 
 <div id="mapa"></div>
 <div id="mapa-historico"></div>
+<div id="mapa-envios"></div>  <!-- P3-S2 -->
 
 <!-- ============ Botón de menú + título (flotantes, arriba a la izquierda) ============ -->
 <div class="barra-superior">
@@ -482,6 +681,7 @@
     <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round">
       <path d="M4 7h16M4 12h16M4 17h16"/>
     </svg>
+    <span class="insignia" id="insignia-menu" hidden></span>  <!-- P3-S2: alertas activas -->
   </button>
   <div class="titulo-flotante">
     <img class="logo-marca" alt="Orbita" width="101" height="36" draggable="false"
@@ -509,6 +709,9 @@
   </div>
   <div id="planilla-contenido"></div>
 </div>
+
+<!-- ============ Tarjeta del viaje en vivo: avance, retraso y alertas del envío (P3-S2) ============ -->
+<div class="tarjeta-viaje" id="tarjeta-viaje" role="region" aria-label="Viaje en curso" hidden></div>
 
 <button class="boton-centrar" onclick="centrarEnVehiculo()" title="Centrar en el vehículo" aria-label="Centrar en el vehículo">
   <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#E6E9EF" stroke-width="2.2" stroke-linecap="round">
@@ -542,6 +745,7 @@
     <div class="selector-modo">
       <button class="modo activo" id="modo-tiempo-real" onclick="cambiarVista('tiempo-real')">📍 En vivo</button>
       <button class="modo" id="modo-historicos" onclick="cambiarVista('historicos')">🕐 Históricos</button>
+      <button class="modo" id="modo-envios" onclick="cambiarVista('envios')">📦 Envíos<span class="insignia" id="insignia-envios" hidden></span></button>
     </div>
 
     <div id="seccion-historicos" hidden>
@@ -599,6 +803,7 @@
           <div class="tarjeta-linea"><span class="tarjeta-etq"><i class="punto-color" style="background:#C2410C"></i>Hasta</span><span class="tarjeta-val" id="detalle-hasta">—</span></div>
           <div class="tarjeta-datos" id="detalle-datos"></div>
           <div class="detalle-planilla" id="detalle-planilla"></div>
+          <div class="detalle-envio-hist" id="detalle-envio-hist"></div>  <!-- P3-S2 -->
         </div>
 
         <div class="punto-info" id="punto-info" hidden>
@@ -637,6 +842,105 @@
         <div class="resultado-sub" id="resultado-sub" hidden></div>
       </div>
 
+    </div>
+
+    <!-- ============ ENVÍOS (P3-S2) ============ -->
+    <div id="seccion-envios" hidden>
+
+      <!-- ---------- Lista de envíos ---------- -->
+      <div id="envios-lista">
+        <button class="btn btn-principal boton-nuevo-envio" onclick="abrirNuevoEnvio()">＋ Nuevo envío</button>
+        <div class="tipo-filtro">
+          <button class="tipo-btn activo" id="fe-activos" onclick="elegirFiltroEnvios('activos')">En curso</button>
+          <button class="tipo-btn" id="fe-finalizados" onclick="elegirFiltroEnvios('finalizados')">Terminados</button>
+        </div>
+        <div class="lista-envios" id="lista-envios"></div>
+        <p class="ayuda-chica" style="margin-top:12px; color: var(--gris-azul); font-size: 11.5px;">
+          En el mapa: camiones disponibles (borde verde), asignados (amarillo) y en ruta (azul).</p>
+      </div>
+
+      <!-- ---------- Nuevo envío ---------- -->
+      <div id="envios-nuevo" hidden>
+        <button class="volver" onclick="mostrarListaEnvios()">← Volver a los envíos</button>
+        <button type="button" class="enlace-ejemplo" onclick="llenarEjemplo()">Llenar con datos de ejemplo</button>
+
+        <div class="panel">
+          <div class="panel-titulo"><span class="letra-punto" style="background:#0F766E">A</span>Origen (donde se recoge)</div>
+          <label for="np-origen-dir">Dirección</label>
+          <div class="fila-busqueda">
+            <input type="text" id="np-origen-dir" placeholder="Ej.: Universidad del Norte" autocomplete="off"
+                   oninput="this.dataset.auto=''" onkeydown="if(event.key==='Enter'){buscarDireccion('origen')}">
+            <button type="button" class="btn-chico" onclick="buscarDireccion('origen')">Buscar</button>
+            <button type="button" class="btn-chico" id="np-marcar-origen" onclick="marcarEnMapa('origen')" title="Marcar en el mapa">📍</button>
+          </div>
+          <div class="resultados-lugar" id="np-origen-resultados"></div>
+          <div class="coords-punto" id="np-origen-coords"></div>
+          <div class="dos-campos">
+            <div><label for="np-cargue-contacto">Contacto de cargue</label><input type="text" id="np-cargue-contacto" maxlength="80"></div>
+            <div><label for="np-cargue-celular">Celular</label><input type="tel" id="np-cargue-celular" inputmode="numeric" maxlength="14" placeholder="300 123 4567"></div>
+          </div>
+        </div>
+
+        <div class="panel">
+          <div class="panel-titulo"><span class="letra-punto" style="background:#C2410C">B</span>Destino (donde se entrega)</div>
+          <label for="np-destino-dir">Dirección</label>
+          <div class="fila-busqueda">
+            <input type="text" id="np-destino-dir" placeholder="Ej.: Puerto de Barranquilla" autocomplete="off"
+                   oninput="this.dataset.auto=''" onkeydown="if(event.key==='Enter'){buscarDireccion('destino')}">
+            <button type="button" class="btn-chico" onclick="buscarDireccion('destino')">Buscar</button>
+            <button type="button" class="btn-chico" id="np-marcar-destino" onclick="marcarEnMapa('destino')" title="Marcar en el mapa">📍</button>
+          </div>
+          <div class="resultados-lugar" id="np-destino-resultados"></div>
+          <div class="coords-punto" id="np-destino-coords"></div>
+          <div class="dos-campos">
+            <div><label for="np-destinatario-nombre">Quién recibe</label><input type="text" id="np-destinatario-nombre" maxlength="80"></div>
+            <div><label for="np-destinatario-celular">Celular</label><input type="tel" id="np-destinatario-celular" inputmode="numeric" maxlength="14" placeholder="300 123 4567"></div>
+          </div>
+        </div>
+
+        <div class="panel">
+          <div class="panel-titulo">Carga</div>
+          <div class="dos-campos">
+            <div><label for="np-tipo">Tipo de carga</label><select id="np-tipo" onchange="revisarCotizacion()"></select></div>
+            <div><label for="np-peso">Peso (kg)</label><input type="number" id="np-peso" min="1" max="60000" step="1" inputmode="numeric" oninput="revisarCotizacion()"></div>
+          </div>
+          <label for="np-descripcion">Descripción</label>
+          <input type="text" id="np-descripcion" maxlength="200" placeholder="Ej.: Cajas de electrodomésticos">
+          <div class="dos-campos">
+            <div><label for="np-empaque">Empaque</label><select id="np-empaque"></select></div>
+            <div><label for="np-cantidad">Cantidad</label><input type="number" id="np-cantidad" min="1" step="1" inputmode="numeric"></div>
+          </div>
+          <div class="dos-campos">
+            <div><label for="np-valor">Valor declarado ($)</label><input type="text" id="np-valor" inputmode="numeric" placeholder="45000000"></div>
+            <div><label for="np-cargue">Fecha de cargue</label><input type="datetime-local" id="np-cargue"></div>
+          </div>
+        </div>
+
+        <div class="panel">
+          <div class="panel-titulo">Cliente</div>
+          <label for="np-cliente-nombre">Nombre o razón social</label>
+          <input type="text" id="np-cliente-nombre" maxlength="80">
+          <label for="np-cliente-nit">NIT</label>
+          <input type="text" id="np-cliente-nit" inputmode="numeric" maxlength="16" placeholder="900123456-7">
+        </div>
+
+        <button class="btn btn-principal boton-calcular" id="btn-calcular-envio" onclick="calcularEnvio()">Calcular ruta y camión</button>
+        <div class="aviso" id="aviso-nuevo" role="alert"></div>
+
+        <div id="resultado-cotizacion" hidden>
+          <div class="sub-titulo">Ruta planeada</div>
+          <div class="caja-clara" id="cotizacion-ruta" style="border-left-color:#1565D8"></div>
+          <div class="sub-titulo">Camión</div>
+          <div class="candidatos" id="np-candidatos"></div>
+          <button class="btn btn-principal boton-calcular" id="btn-crear-envio" style="margin-top:12px" onclick="crearEnvio()" disabled>Crear envío y asignar camión</button>
+        </div>
+      </div>
+
+      <!-- ---------- Detalle de un envío ---------- -->
+      <div id="envios-detalle" hidden>
+        <button class="volver" onclick="mostrarListaEnvios()">← Volver a los envíos</button>
+        <div id="detalle-envio"></div>
+      </div>
     </div>
 
     <p class="eslogan-menu">Cada kilómetro bajo tu radar</p>
@@ -898,11 +1202,15 @@
   function cambiarVista(vista) {
     modoActual = vista;
     var hist = (vista === 'historicos');
+    var env = (vista === 'envios');                    // P3-S2: tercer modo, Envíos
     document.body.classList.toggle('modo-historicos', hist);
-    porId('modo-tiempo-real').classList.toggle('activo', !hist);
+    document.body.classList.toggle('modo-envios', env);
+    porId('modo-tiempo-real').classList.toggle('activo', !hist && !env);
     porId('modo-historicos').classList.toggle('activo', hist);
-    porId('titulo-modo-texto').textContent = hist ? 'Históricos' : 'En vivo';
+    porId('modo-envios').classList.toggle('activo', env);
+    porId('titulo-modo-texto').textContent = hist ? 'Históricos' : (env ? 'Envíos' : 'En vivo');
     porId('seccion-historicos').hidden = !hist;
+    porId('seccion-envios').hidden = !env;
 
     if (hist) {
       if (mapaHistorico === null) {
@@ -914,6 +1222,9 @@
         cargarRangoFechas();
         if (tipoFiltro === null && vistaActual === 'lista') { mostrarUltimasRutas(); }
       }
+    } else if (env) {                                  // P3-S2
+      cancelarArmado();
+      entrarAEnvios();
     } else {
       cancelarArmado();
       alternarMenu(false);          // al volver a Tiempo Real se ve todo el mapa
@@ -951,7 +1262,7 @@
   var htmlPlanillaMostrado = null;
 
   function pintarPlanilla() {
-    var html = htmlPlanillaVivo(planillaVivo);
+    var html = htmlPlanillaVivo(planillaVivo) + htmlEnvioPlanilla(envioVivo);   // P3-S2: + datos del envío
     if (html !== htmlPlanillaMostrado) {       // solo se toca la página si algo cambió
       porId('planilla-contenido').innerHTML = html;
       htmlPlanillaMostrado = html;
@@ -1063,6 +1374,7 @@
 
         // Planilla del recorrido en curso (P3-S1). Si el servidor aún no la manda, queda undefined.
         planillaVivo = datos.planilla;
+        actualizarEnvioVivo(datos.envio);              // P3-S2: el envío del recorrido en curso (o null)
         if (planillaAbierta) { pintarPlanilla(); }
 
         var lat = parseFloat(datos.lat);
@@ -1135,6 +1447,7 @@
   window.addEventListener('resize', function () {
     mapa.invalidateSize();
     if (mapaHistorico) { mapaHistorico.invalidateSize(); }
+    if (mapaEnvios) { mapaEnvios.invalidateSize(); }   // P3-S2
   });
 
   // =====================================================================
@@ -1391,6 +1704,7 @@
         '<div class="tarjeta-cabecera"><div class="tarjeta-titulo">' + htmlTituloRuta(r) + '</div>' +
         (lista.length > 1 ? '<button type="button" class="ojo"></button>' : '') + '</div>' +
         htmlConductorTarjeta(r.planilla) +
+        htmlEnvioTarjeta(r.envio) +                    // P3-S2
         '<div class="tarjeta-datos">' + htmlDatosRuta(r) + '</div>';
       var ojo = tarjeta.querySelector('.ojo');
       if (ojo) {
@@ -1999,6 +2313,7 @@
     if (mapaHistorico.hasLayer(capaZona)) { mapaHistorico.removeLayer(capaZona); }
     reiniciarSubfiltros();
     rellenarResumen(resumen, rutaSel.color);
+    cargarEnvioHistorico(resumen);                     // P3-S2: ruta planeada y puntos de control
     porId('punto-info').hidden = true;
     porId('slider-etiqueta').textContent = '—';
     porId('slider-momento').max = 0;
@@ -2188,6 +2503,7 @@
     desarmar();
     reiniciarSubfiltros();
     capaDetalle.clearLayers();
+    limpiarEnvioHistorico();                           // P3-S2
     lineaDetalle = marcadorInicio = marcadorFin = marcadorSlider = null;
     rutaSel = null;
     // Vuelven las capas que se ocultaron al abrir el detalle (ver seleccionarRecorrido).
@@ -2394,6 +2710,896 @@
     if (opciones.avisar) { mostrarAvisoMapa(pasadas.length === 1 ? '1 pasada por la zona' : pasadas.length + ' pasadas por la zona'); }
     mostrarResultadoSub('<b>' + (pasadas.length === 1 ? 'Tramo dentro de la zona' : pasadas.length + ' pasadas por la zona') + '</b>', botones);
   }
+
+  // =====================================================================
+  // 10. ENVÍOS (P3-S2): crear envíos, verlos y seguir cada viaje
+  //     Todo sale de la API del servidor (/api/...). Si la API todavía no
+  //     está en este servidor, la sección lo dice y el resto de la página
+  //     sigue funcionando igual.
+  // =====================================================================
+
+  var NOMBRES_ESTADO = { asignado: 'Asignado', en_ruta: 'En ruta', en_destino: 'En destino',
+                         finalizado: 'Finalizado', cancelado: 'Cancelado' };
+  var COLOR_ESTADO = { asignado: '#A7B1BE', en_ruta: '#1565D8', en_destino: '#0F766E',
+                       finalizado: '#2B2F36', cancelado: '#A7B1BE' };
+  var COLOR_NIVEL = { a_tiempo: '#0F766E', aviso: '#D49100', alerta: '#C62828', pendiente: '#A7B1BE' };
+  var NOMBRES_CAMION = { no_disponible: 'No disponible', disponible: 'Disponible', asignado: 'Asignado', en_ruta: 'En ruta' };
+
+  // Pide algo a la API. Si responde con error, lanza una excepción con el mensaje
+  // del servidor (y el campo del formulario que falló, si lo dice).
+  function pedirApi(metodo, url, datos) {
+    var opciones = { method: metodo, headers: {} };
+    if (datos !== undefined) {
+      opciones.headers['Content-Type'] = 'application/json';
+      opciones.body = JSON.stringify(datos);
+    }
+    return fetch(url, opciones).then(function (r) {
+      return r.text().then(function (texto) {
+        var cuerpo = null;
+        try { cuerpo = texto ? JSON.parse(texto) : {}; } catch (e) { cuerpo = null; }
+        if (!r.ok || cuerpo === null) {
+          var mensaje = (cuerpo && cuerpo.error) ||
+            (r.status === 404 || cuerpo === null ? 'Los envíos todavía no están disponibles en este servidor.' : 'Error ' + r.status + ' del servidor.');
+          var error = new Error(mensaje);
+          error.campo = cuerpo && cuerpo.campo;
+          error.estado = r.status;
+          throw error;
+        }
+        return cuerpo;
+      });
+    });
+  }
+
+  // Si el servidor responde algo que no es de la API (por ejemplo, una versión sin el paso 3 que
+  // contesta /datos a cualquier ruta), se trata igual que "no disponible".
+  function exigir(respuesta, clave) {
+    if (!respuesta || respuesta[clave] === undefined) {
+      var error = new Error('Los envíos todavía no están disponibles en este servidor.');
+      error.estado = 404;
+      throw error;
+    }
+    return respuesta[clave];
+  }
+
+  // ---- Textos y etiquetas ----
+  function textoRetraso(s) {
+    if (s === null || s === undefined) { return '—'; }
+    if (Math.abs(s) < 60) { return 'A tiempo'; }
+    var m = Math.round(Math.abs(s) / 60);
+    var t = m < 60 ? m + ' min' : Math.floor(m / 60) + ' h ' + dos(m % 60) + ' min';
+    return s > 0 ? t + ' tarde' : t + ' antes';
+  }
+  function chipEstado(estado) {
+    return '<span class="chip chip-' + estado + '">' + (NOMBRES_ESTADO[estado] || estado) + '</span>';
+  }
+  function chipNivel(nivel, retraso) {
+    if (!nivel) { return ''; }
+    return '<span class="chip chip-' + nivel + '">' + (nivel === 'pendiente' ? 'Pendiente' : textoRetraso(retraso)) + '</span>';
+  }
+  function horaDe(iso) { return iso ? partesFecha(iso).hora : '—'; }
+  function horaColombia(ms) {
+    try {
+      return new Intl.DateTimeFormat('es-CO', { timeZone: 'America/Bogota', hour: '2-digit', minute: '2-digit', hour12: false })
+        .format(new Date(ms));
+    } catch (e) { var d = new Date(ms); return dos(d.getHours()) + ':' + dos(d.getMinutes()); }
+  }
+  function textoPesos(v) { return '$ ' + String(Math.round(v || 0)).replace(/\B(?=(\d{3})+(?!\d))/g, '.'); }
+  function textoKg(v) { return String(Math.round(v || 0)).replace(/\B(?=(\d{3})+(?!\d))/g, '.') + ' kg'; }
+  function textoMinutos(s) { return textoDuracion((s || 0) * 1000); }
+  function textoAlerta(a) {
+    if (a.tipo === 'desvio') { return 'Desvío de ' + textoDistancia(a.valor_max) + ' de la ruta'; }
+    if (a.tipo === 'retraso') { return 'Retraso de ' + textoRetraso(a.valor_max).replace(' tarde', ''); }
+    return a.tipo;
+  }
+  function proximoPunto(e) {
+    for (var i = 0; i < e.puntos_control.length; i++) {
+      if (!e.puntos_control[i].hora_real) { return e.puntos_control[i]; }
+    }
+    return null;
+  }
+  // Hora estimada de llegada a un punto: la planeada más el retraso que lleva ahora.
+  function etaDe(e, punto) {
+    if (!punto || !punto.hora_plan) { return null; }
+    var ms = instanteMs(punto.hora_plan) + (e.progreso.retraso_s || 0) * 1000;
+    return isNaN(ms) ? null : ms;
+  }
+  function htmlRutaCorta(origen, destino) {
+    return escaparHtml(origen) + ' <span class="flechita">→</span> ' + escaparHtml(destino);
+  }
+
+  // ---- Iconos del mapa ----
+  function iconoPunto(p, color) {
+    var texto = p.tipo === 'salida' ? 'S' : p.tipo === 'llegada' ? 'L' : p.orden;
+    return L.divIcon({ className: 'marca-punto', iconSize: [26, 26], iconAnchor: [13, 13],
+                       html: '<div class="marca-punto-in tipo-' + p.tipo + '" style="background:' + color + '">' + texto + '</div>' });
+  }
+  function iconoLetra(letra, color) {
+    return L.divIcon({ className: 'marca-punto', iconSize: [30, 30], iconAnchor: [15, 15],
+                       html: '<div class="marca-letra" style="background:' + color + '">' + letra + '</div>' });
+  }
+  function iconoCamionFlota(estado, atenuado) {
+    return L.divIcon({ className: 'icono-flota' + (atenuado ? ' atenuado' : ''), iconSize: [34, 34], iconAnchor: [17, 17],
+                       html: '<div class="flota-in estado-' + estado + '">🚚</div>' });
+  }
+  function popupPunto(p) {
+    var plan = p.hora_plan ? horaDe(p.hora_plan) : 'min ' + Math.round(p.tiempo_plan_s / 60);
+    return '<b>' + (p.tipo === 'control' ? p.orden + '. ' : '') + escaparHtml(p.nombre) + '</b><br>' +
+           'Km ' + (p.distancia_m / 1000).toFixed(1).replace('.', ',') + ' · plan ' + plan +
+           (p.hora_real ? '<br>Pasó ' + horaDe(p.hora_real) + ' · ' + textoRetraso(p.retraso_s) : '');
+  }
+  // Puntos de control de un envío sobre un mapa (colores según el retraso con que se pasaron).
+  function dibujarPuntos(capa, puntos) {
+    puntos.forEach(function (p) {
+      var color = COLOR_NIVEL[p.nivel || 'pendiente'] || COLOR_NIVEL.pendiente;
+      L.marker([p.lat, p.lon], { icon: iconoPunto(p, color), zIndexOffset: p.tipo === 'control' ? 100 : 200 })
+        .bindPopup(popupPunto(p)).addTo(capa);
+    });
+  }
+  // Línea de la ruta PLANEADA: gris con borde blanco, por debajo de la ruta real.
+  function lineaPlaneada(capa, puntos, pane) {
+    L.polyline(puntos, { color: '#FFFFFF', weight: 10, opacity: 0.9, lineJoin: 'round', interactive: false, pane: pane }).addTo(capa);
+    return L.polyline(puntos, { color: '#5C6B80', weight: 5, opacity: 0.9, dashArray: '1 9', lineCap: 'round', lineJoin: 'round',
+                                interactive: false, pane: pane }).addTo(capa);
+  }
+
+  // ---- Catálogo (configuraciones, tipos de carga, empaques) ----
+  var catalogo = null;
+  function cargarCatalogo() {
+    if (catalogo) { return Promise.resolve(catalogo); }
+    return pedirApi('GET', '/api/catalogo').then(function (c) {
+      exigir(c, 'tipos_carga');
+      catalogo = c;
+      var tipo = porId('np-tipo'), empaque = porId('np-empaque');
+      tipo.innerHTML = c.tipos_carga.map(function (t) { return '<option value="' + t.codigo + '">' + escaparHtml(t.nombre) + '</option>'; }).join('');
+      empaque.innerHTML = c.empaques.map(function (t) { return '<option value="' + t.codigo + '">' + escaparHtml(t.nombre) + '</option>'; }).join('');
+      return c;
+    });
+  }
+
+  // ---- Mapa de la sección Envíos ----
+  var mapaEnvios = null, capaFlota, capaEnvio, capaNuevo;
+  var lineaRealEnvio = null, contornoRealEnvio = null, camionEnvio = null;
+
+  function inicializarMapaEnvios() {
+    mapaEnvios = L.map('mapa-envios', { zoomControl: false }).setView([10.99, -74.81], 12);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+      maxZoom: 19
+    }).addTo(mapaEnvios);
+    L.control.zoom({ position: 'bottomright' }).addTo(mapaEnvios);
+    mapaEnvios.createPane('planeada');
+    mapaEnvios.getPane('planeada').style.zIndex = 390;
+    capaFlota = L.layerGroup().addTo(mapaEnvios);
+    capaEnvio = L.layerGroup().addTo(mapaEnvios);
+    capaNuevo = L.layerGroup().addTo(mapaEnvios);
+    mapaEnvios.on('click', alClicMapaEnvios);
+  }
+
+  // ---- Navegación dentro de la sección ----
+  var vistaEnvios = 'lista';          // 'lista' | 'nuevo' | 'detalle'
+  var filtroEnvios = 'activos';
+
+  function entrarAEnvios() {
+    if (!mapaEnvios) { inicializarMapaEnvios(); } else { mapaEnvios.invalidateSize(); }
+    alternarMenu(true);
+    cargarCatalogo().catch(function () {});
+    if (vistaEnvios === 'detalle' && envioAbierto) { refrescarDetalle(false); }
+    else if (vistaEnvios === 'nuevo') { cargarFlota(); }
+    else { mostrarListaEnvios(); }
+  }
+  function mostrarSubvistaEnvios(v) {
+    vistaEnvios = v;
+    ['lista', 'nuevo', 'detalle'].forEach(function (x) { porId('envios-' + x).hidden = (x !== v); });
+    porId('menu-cuerpo').scrollTop = 0;
+    if (mapaEnvios) {
+      if (v === 'detalle') { mapaEnvios.removeLayer(capaFlota); } else if (!mapaEnvios.hasLayer(capaFlota)) { mapaEnvios.addLayer(capaFlota); }
+      if (v !== 'nuevo') { capaNuevo.clearLayers(); marcadoresNuevo = {}; terminarMarcado(); }
+      if (v !== 'detalle') { limpiarEnvioDelMapa(); }
+    }
+  }
+  function mostrarListaEnvios() {
+    envioAbierto = null;
+    mostrarSubvistaEnvios('lista');
+    cargarListaEnvios(false);
+    cargarFlota(true);
+  }
+  function elegirFiltroEnvios(filtro) {
+    filtroEnvios = filtro;
+    porId('fe-activos').classList.toggle('activo', filtro === 'activos');
+    porId('fe-finalizados').classList.toggle('activo', filtro === 'finalizados');
+    cargarListaEnvios(false);
+  }
+
+  // ---- Lista de envíos ----
+  var tokenListaEnvios = 0;
+  function cargarListaEnvios(silencioso) {
+    var token = ++tokenListaEnvios, contenedor = porId('lista-envios');
+    if (!silencioso) { contenedor.innerHTML = '<div class="lista-vacia">Cargando…</div>'; }
+    pedirApi('GET', '/api/envios?estado=' + filtroEnvios + '&limite=50').then(function (r) {
+      if (token !== tokenListaEnvios) { return; }
+      renderizarEnvios(exigir(r, 'envios'));
+    }).catch(function (e) {
+      if (token === tokenListaEnvios) { contenedor.innerHTML = '<div class="lista-vacia">' + escaparHtml(e.message) + '</div>'; }
+    });
+  }
+  function renderizarEnvios(lista) {
+    var contenedor = porId('lista-envios');
+    if (lista.length === 0) {
+      contenedor.innerHTML = '<div class="lista-vacia">' + (filtroEnvios === 'activos'
+        ? 'No hay envíos en curso. Crea uno con “Nuevo envío”.' : 'Todavía no hay envíos terminados.') + '</div>';
+      return;
+    }
+    contenedor.innerHTML = '';
+    lista.forEach(function (e) {
+      var tarjeta = document.createElement('div');
+      tarjeta.className = 'tarjeta-envio';
+      tarjeta.tabIndex = 0;
+      tarjeta.setAttribute('role', 'button');
+      tarjeta.style.borderLeftColor = e.alertas_activas ? COLOR_NIVEL.alerta : (COLOR_ESTADO[e.estado] || '#A7B1BE');
+      var conAvance = e.estado === 'en_ruta' || e.estado === 'en_destino';
+      tarjeta.innerHTML =
+        '<div class="envio-cabecera"><span class="envio-codigo">' + e.codigo + '</span>' + chipEstado(e.estado) +
+        (e.estado === 'en_ruta' && e.nivel_retraso ? chipNivel(e.nivel_retraso, e.retraso_s) : '') +
+        (e.alertas_activas ? '<span class="chip chip-alerta" title="Alertas activas">⚠ ' + e.alertas_activas + '</span>' : '') + '</div>' +
+        '<div class="envio-ruta">' + htmlRutaCorta(e.origen, e.destino) + '</div>' +
+        '<div class="envio-meta"><span>🚚 ' + escaparHtml(e.placa) + '</span><span>' + escaparHtml(e.cliente) + '</span>' +
+        '<span>' + textoDistancia(e.distancia_m) + ' · ' + textoMinutos(e.duracion_s) + '</span></div>' +
+        (conAvance ? '<div class="barra-avance" title="' + e.porcentaje + ' % de la ruta"><i style="width:' + e.porcentaje + '%"></i></div>' : '');
+      tarjeta.addEventListener('click', function () { abrirEnvio(e.id); });
+      tarjeta.addEventListener('keydown', function (ev) { if (ev.key === 'Enter') { abrirEnvio(e.id); } });
+      contenedor.appendChild(tarjeta);
+    });
+  }
+
+  // ---- Flota (camiones registrados) sobre el mapa ----
+  var flotaActual = [];
+  function cargarFlota(ajustar) {
+    pedirApi('GET', '/api/camiones').then(function (r) {
+      flotaActual = exigir(r, 'camiones');
+      dibujarFlota();
+      if (ajustar && vistaEnvios === 'lista') {
+        var b = L.latLngBounds([]);
+        flotaActual.forEach(function (c) { if (c.ubicacion && c.estado !== 'no_disponible') { b.extend([c.ubicacion.lat, c.ubicacion.lon]); } });
+        if (b.isValid()) { mapaEnvios.fitBounds(b, opcionesAjuste()); }
+      }
+    }).catch(function () {});
+  }
+  function dibujarFlota() {
+    if (!capaFlota) { return; }
+    capaFlota.clearLayers();
+    var candidatos = {};
+    if (vistaEnvios === 'nuevo' && cotizacion) { cotizacion.candidatos.forEach(function (c) { candidatos[c.placa] = c; }); }
+    flotaActual.forEach(function (c) {
+      if (!c.ubicacion || c.estado === 'no_disponible') { return; }
+      var atenuado = vistaEnvios === 'nuevo' && cotizacion && !candidatos[c.placa];
+      var hace = c.ubicacion.hace_min;
+      L.marker([c.ubicacion.lat, c.ubicacion.lon], { icon: iconoCamionFlota(c.estado, atenuado), zIndexOffset: atenuado ? -100 : 0 })
+        .bindTooltip('<b>' + escaparHtml(c.placa) + '</b> · ' + (NOMBRES_CAMION[c.estado] || c.estado) + '<br>' +
+                     escaparHtml(c.configuracion_nombre) + ' · ' + escaparHtml(c.carroceria_nombre) + '<br>' +
+                     textoKg(c.capacidad_kg) + ' · ubicación hace ' + (hace === null ? '—' : hace + ' min'))
+        .on('click', function (ev) { if (marcando) { alClicMapaEnvios(ev); } })   // marcando un punto, el camión no estorba
+        .addTo(capaFlota);
+    });
+  }
+
+  // ---- Detalle de un envío ----
+  var envioAbierto = null;          // { id, datos, ruta, firmaReal }
+  function abrirEnvio(id) {
+    if (modoActual !== 'envios') { cambiarVista('envios'); }
+    envioAbierto = { id: id, datos: null, ruta: null, firmaReal: '', firmaHtml: '' };
+    mostrarSubvistaEnvios('detalle');
+    alternarMenu(true);
+    porId('detalle-envio').innerHTML = '<div class="lista-vacia">Cargando…</div>';
+    refrescarDetalle(true);
+  }
+  function refrescarDetalle(ajustar) {
+    if (!envioAbierto) { return; }
+    var id = envioAbierto.id;
+    pedirApi('GET', '/api/envios/' + id + (envioAbierto.ruta ? '?ruta=0' : '')).then(function (r) {
+      if (!envioAbierto || envioAbierto.id !== id) { return; }
+      exigir(r, 'envio');
+      if (r.envio.ruta) { envioAbierto.ruta = r.envio.ruta; }
+      envioAbierto.datos = r.envio;
+      var html = htmlDetalleEnvio(r.envio);
+      if (html !== envioAbierto.firmaHtml) {        // solo se toca la página si algo cambió
+        envioAbierto.firmaHtml = html;
+        porId('detalle-envio').innerHTML = html;
+      }
+      dibujarEnvio(r.envio, ajustar);
+    }).catch(function (e) {
+      if (envioAbierto && envioAbierto.id === id) { porId('detalle-envio').innerHTML = '<div class="lista-vacia">' + escaparHtml(e.message) + '</div>'; }
+    });
+  }
+  function htmlFila(etiqueta, valor) {
+    return '<div class="tarjeta-linea"><span class="tarjeta-etq ancha">' + etiqueta + '</span><span class="tarjeta-val">' + valor + '</span></div>';
+  }
+  function htmlAvance(e) {
+    var p = e.progreso, plan = e.plan;
+    if (e.estado === 'asignado') {
+      return '<div class="nota-envio">Esperando que el conductor inicie el viaje desde la app. ' +
+             'Ruta planeada: <b>' + textoDistancia(plan.distancia_m) + '</b> en <b>' + textoMinutos(plan.duracion_s) + '</b>.</div>';
+    }
+    if (e.estado === 'cancelado') { return '<div class="nota-envio">Envío cancelado antes de salir.</div>'; }
+    var siguiente = proximoPunto(e), eta = etaDe(e, siguiente);
+    var llegada = p.llegada_real ? horaDe(p.llegada_real) : (p.llegada_estimada ? horaDe(p.llegada_estimada) : '—');
+    return '<div class="barra-avance grande"><i style="width:' + p.porcentaje + '%"></i></div>' +
+      '<div class="tarjeta-datos">' +
+        '<div><b>' + p.porcentaje + ' %</b><span>Avance</span></div>' +
+        '<div><b>' + textoDistancia(p.recorrido_m) + '</b><span>Recorrido</span></div>' +
+        '<div><b>' + (p.velocidad_kmh === null ? '—' : p.velocidad_kmh + ' km/h') + '</b><span>Velocidad</span></div>' +
+      '</div>' +
+      htmlFila('Retraso', chipNivel(p.nivel_retraso || 'a_tiempo', p.retraso_s)) +
+      htmlFila('Salida', horaDe(p.salida_real)) +
+      htmlFila('Llegada', llegada + (p.llegada_real ? '' : ' <small class="gris">estimada</small>')) +
+      (e.estado === 'en_ruta' && siguiente
+        ? htmlFila('Próximo', escaparHtml(siguiente.nombre) + (eta ? ' · ' + horaColombia(eta) : '')) : '');
+  }
+  function htmlAlertas(e, conBotones) {
+    if (!e.alertas.length) { return ''; }
+    return e.alertas.map(function (a) {
+      return '<div class="alerta-item' + (a.activa ? ' activa' : '') + '">' +
+        '<span class="alerta-icono">' + (a.activa ? '⚠' : '✓') + '</span>' +
+        '<span class="alerta-texto"><b>' + textoAlerta(a) + '</b><small>' + (a.activa ? 'Desde ' : '') + horaDe(a.inicio) +
+        (a.fin ? ' – ' + horaDe(a.fin) : ' · sigue activa') + (a.vista ? ' · vista' : '') + '</small></span>' +
+        (conBotones && a.activa && !a.vista ? '<button type="button" class="btn-visto" onclick="marcarAlertaVista(' + a.id + ', event)">Visto</button>' : '') +
+        '</div>';
+    }).join('');
+  }
+  function htmlListaPuntos(e) {
+    return e.puntos_control.map(function (p) {
+      var color = COLOR_NIVEL[p.nivel || 'pendiente'] || COLOR_NIVEL.pendiente;
+      var plan = p.hora_plan ? horaDe(p.hora_plan) : '+' + Math.round(p.tiempo_plan_s / 60) + ' min';
+      var real = p.hora_real ? 'pasó ' + horaDe(p.hora_real) : (e.estado === 'en_ruta' ? 'pendiente' : '—');
+      return '<div class="punto-control">' +
+        '<span class="num-punto" style="background:' + color + '">' + (p.tipo === 'salida' ? 'S' : p.tipo === 'llegada' ? 'L' : p.orden) + '</span>' +
+        '<span class="punto-nombre">' + escaparHtml(p.nombre) + '<small>Km ' + (p.distancia_m / 1000).toFixed(1).replace('.', ',') +
+        ' · plan ' + plan + ' · ' + real + '</small></span>' +
+        (p.hora_real && p.tipo !== 'salida' ? chipNivel(p.nivel, p.retraso_s) : '') +
+        '</div>';
+    }).join('');
+  }
+  function htmlDetalleEnvio(e) {
+    var c = e.carga, cam = e.camion;
+    var color = e.alertas.some(function (a) { return a.activa; }) ? COLOR_NIVEL.alerta : (COLOR_ESTADO[e.estado] || '#A7B1BE');
+    var activas = e.alertas.filter(function (a) { return a.activa; }).length;
+    return '<div class="caja-clara" style="border-left-color:' + color + '">' +
+        '<div class="envio-cabecera"><span class="envio-codigo grande">' + e.codigo + '</span>' + chipEstado(e.estado) + '</div>' +
+        '<div class="envio-ruta grande">' + htmlRutaCorta(e.origen.direccion, e.destino.direccion) + '</div>' +
+        htmlAvance(e) +
+      '</div>' +
+      (e.alertas.length ? '<div class="sub-titulo">Alertas' + (activas ? ' activas: ' + activas : '') + '</div>' + htmlAlertas(e, true) : '') +
+      '<div class="sub-titulo">Puntos de control</div>' +
+      '<div class="caja-clara lista-puntos">' + htmlListaPuntos(e) + '</div>' +
+      '<div class="sub-titulo">Datos del envío</div>' +
+      '<div class="caja-clara">' +
+        htmlFila('Cliente', escaparHtml(e.cliente.nombre) + ' <small class="gris">NIT ' + escaparHtml(e.cliente.nit) + '</small>') +
+        htmlFila('Carga', escaparHtml(c.tipo_nombre) + ' · ' + textoKg(c.peso_kg)) +
+        htmlFila('', escaparHtml(c.cantidad + ' ' + c.empaque_nombre.toLowerCase() + ' · ' + c.descripcion)) +
+        htmlFila('Valor', textoPesos(c.valor_declarado)) +
+        htmlFila('Cargue', fechaCorta(e.cargue_programado)) +
+        htmlFila('Contacto', escaparHtml(e.origen.contacto) + ' · ' + escaparHtml(formatearCelular(e.origen.celular))) +
+        htmlFila('Recibe', escaparHtml(e.destino.destinatario) + ' · ' + escaparHtml(formatearCelular(e.destino.celular))) +
+        htmlFila('Camión', cam ? '<b>' + escaparHtml(cam.placa) + '</b> · ' + escaparHtml(cam.configuracion_nombre) + ' · ' +
+                 escaparHtml(cam.carroceria_nombre) : escaparHtml(e.placa)) +
+        htmlFila('Conductor', e.conductor ? escaparHtml(e.conductor.nombre) + ' <small class="gris">' + formatearCedula(e.conductor.cedula) + '</small>'
+                 : '<span class="gris">Se verifica al iniciar el viaje</span>') +
+        htmlFila('Ruta', (e.plan.fuente === 'ors-hgv' ? 'openrouteservice (camión)' : 'OSRM (carro, tiempos ×1,25)')) +
+      '</div>' +
+      (e.estado === 'asignado' ? '<button class="btn btn-secundario btn-ancho" onclick="cancelarEnvio(' + e.id + ')">Cancelar envío</button>' : '');
+  }
+
+  function limpiarEnvioDelMapa() {
+    if (!capaEnvio) { return; }
+    capaEnvio.clearLayers();
+    lineaRealEnvio = contornoRealEnvio = camionEnvio = null;
+  }
+  function dibujarEnvio(e, ajustar) {
+    var ruta = envioAbierto && envioAbierto.ruta;
+    capaEnvio.clearLayers();
+    lineaRealEnvio = contornoRealEnvio = camionEnvio = null;
+    var limites = L.latLngBounds([]);
+    if (ruta && ruta.puntos.length) {
+      var plan = lineaPlaneada(capaEnvio, ruta.puntos, 'planeada');
+      limites.extend(plan.getBounds());
+    }
+    dibujarPuntos(capaEnvio, e.puntos_control);
+    e.alertas.forEach(function (a) {
+      if (a.lat === null || a.lon === null) { return; }
+      L.marker([a.lat, a.lon], { icon: L.divIcon({ className: 'marca-alerta', iconSize: [24, 24], iconAnchor: [12, 12], html: '<div>⚠</div>' }),
+                                 zIndexOffset: 300 })
+        .bindPopup('<b>' + textoAlerta(a) + '</b><br>' + horaDe(a.inicio) + (a.fin ? ' – ' + horaDe(a.fin) : ' (activa)')).addTo(capaEnvio);
+    });
+    if (ajustar && limites.isValid()) { mapaEnvios.fitBounds(limites, opcionesAjuste()); }
+    // Recorrido real (las posiciones que mandó el celular) y el camión en su última posición
+    var recorrido = e.progreso.id_recorrido;
+    if (recorrido) {
+      pedirJSON('/puntos_recorrido?id=' + encodeURIComponent(recorrido)).then(function (puntos) {
+        if (!envioAbierto || envioAbierto.id !== e.id || !puntos.length) { return; }
+        var coords = puntos.map(function (p) { return [p.lat, p.lon]; });
+        contornoRealEnvio = L.polyline(coords, { color: '#FFFFFF', weight: 11, opacity: 0.95, lineJoin: 'round', interactive: false }).addTo(capaEnvio);
+        lineaRealEnvio = L.polyline(coords, { color: '#1565D8', weight: 6, opacity: 1, lineJoin: 'round', interactive: false }).addTo(capaEnvio);
+        if (e.estado === 'en_ruta' || e.estado === 'en_destino') {
+          camionEnvio = L.marker(coords[coords.length - 1], { icon: iconoCamion, zIndexOffset: 500, title: e.placa }).addTo(capaEnvio);
+        }
+      }).catch(function (err) { console.error(err); });
+    } else if (e.estado === 'asignado' && e.camion && e.camion.ubicacion) {
+      camionEnvio = L.marker([e.camion.ubicacion.lat, e.camion.ubicacion.lon], { icon: iconoCamion, zIndexOffset: 500,
+                                                                                 title: e.placa + ' (ubicación del camión)' }).addTo(capaEnvio);
+    }
+  }
+  function cancelarEnvio(id) {
+    if (!window.confirm('¿Cancelar este envío? El camión quedará disponible otra vez.')) { return; }
+    pedirApi('POST', '/api/envios/' + id + '/cancelar', {}).then(function () {
+      mostrarAvisoMapa('Envío cancelado');
+      refrescarDetalle(false);
+      actualizarInsignias();
+    }).catch(function (e) { mostrarAvisoMapa(e.message); });
+  }
+  function marcarAlertaVista(id, ev) {
+    if (ev) { ev.stopPropagation(); }
+    pedirApi('POST', '/api/alertas/' + id + '/vista', {}).then(function () {
+      alertasAvisadas[id] = true;
+      if (envioAbierto) { refrescarDetalle(false); }
+      if (envioVivo) { actualizarValores(); }
+      actualizarInsignias();
+    }).catch(function (e) { mostrarAvisoMapa(e.message); });
+  }
+
+  // ---- Nuevo envío ----
+  var nuevoPunto = { origen: null, destino: null };
+  var marcadoresNuevo = {};
+  var marcando = null;              // 'origen' | 'destino' | null: el próximo toque en el mapa pone ese punto
+  var cotizacion = null, firmaCotizada = '', placaElegida = null;
+
+  var CAMPOS_ENVIO = {               // campo de la API -> id del elemento en el formulario
+    cliente_nombre: 'np-cliente-nombre', cliente_nit: 'np-cliente-nit',
+    origen_direccion: 'np-origen-dir', origen: 'np-origen-dir', cargue_contacto: 'np-cargue-contacto', cargue_celular: 'np-cargue-celular',
+    destino_direccion: 'np-destino-dir', destino: 'np-destino-dir', destinatario_nombre: 'np-destinatario-nombre',
+    destinatario_celular: 'np-destinatario-celular', tipo_carga: 'np-tipo', descripcion: 'np-descripcion', empaque: 'np-empaque',
+    cantidad: 'np-cantidad', peso_kg: 'np-peso', valor_declarado: 'np-valor', cargue_programado: 'np-cargue', placa: 'np-candidatos'
+  };
+
+  function abrirNuevoEnvio() {
+    mostrarSubvistaEnvios('nuevo');
+    alternarMenu(true);
+    if (!porId('np-cargue').value) { porId('np-cargue').value = cargueSugerido(); }
+    cargarCatalogo().catch(function (e) { porId('aviso-nuevo').textContent = e.message; });
+    cargarFlota(false);
+    redibujarNuevo();
+  }
+  // Una hora después de ahora, redondeado al siguiente cuarto de hora (formato del campo datetime-local).
+  function cargueSugerido() {
+    var d = new Date(Date.now() + 60 * 60000);
+    d.setMinutes(Math.ceil(d.getMinutes() / 15) * 15, 0, 0);
+    return d.getFullYear() + '-' + dos(d.getMonth() + 1) + '-' + dos(d.getDate()) + 'T' + dos(d.getHours()) + ':' + dos(d.getMinutes());
+  }
+  function soloDigitos(texto) { return String(texto || '').replace(/\D/g, ''); }
+  function leerFormulario() {
+    var v = function (id) { return porId(id).value.trim(); };
+    return {
+      cliente_nombre: v('np-cliente-nombre'), cliente_nit: v('np-cliente-nit').replace(/[\s.]/g, ''),
+      origen_direccion: v('np-origen-dir'), origen: nuevoPunto.origen,
+      cargue_contacto: v('np-cargue-contacto'), cargue_celular: soloDigitos(v('np-cargue-celular')),
+      destino_direccion: v('np-destino-dir'), destino: nuevoPunto.destino,
+      destinatario_nombre: v('np-destinatario-nombre'), destinatario_celular: soloDigitos(v('np-destinatario-celular')),
+      tipo_carga: v('np-tipo'), descripcion: v('np-descripcion'), empaque: v('np-empaque'),
+      cantidad: parseInt(soloDigitos(v('np-cantidad')), 10) || 0,
+      peso_kg: parseInt(soloDigitos(v('np-peso')), 10) || 0,
+      valor_declarado: parseInt(soloDigitos(v('np-valor')), 10) || 0,
+      cargue_programado: v('np-cargue')
+    };
+  }
+  function firmaDeCotizacion(d) {
+    return JSON.stringify([d.origen, d.destino, d.peso_kg, d.tipo_carga]);
+  }
+  function limpiarErrores() {
+    Array.prototype.forEach.call(document.querySelectorAll('#envios-nuevo .campo-error'), function (el) { el.classList.remove('campo-error'); });
+    porId('aviso-nuevo').textContent = '';
+  }
+  function marcarError(campo, mensaje) {
+    var el = porId(CAMPOS_ENVIO[campo] || '');
+    if (el) {
+      el.classList.add('campo-error');
+      el.scrollIntoView({ block: 'center', behavior: 'smooth' });
+      if (el.focus && el.tagName !== 'DIV') { el.focus({ preventScroll: true }); }
+    }
+    porId('aviso-nuevo').textContent = mensaje;
+  }
+
+  // Si cambia el origen, el destino, el peso o el tipo de carga, la ruta y los camiones calculados ya no valen.
+  function revisarCotizacion() {
+    if (cotizacion && firmaDeCotizacion(leerFormulario()) !== firmaCotizada) {
+      cotizacion = null;
+      placaElegida = null;
+      porId('resultado-cotizacion').hidden = true;
+      porId('btn-crear-envio').disabled = true;
+      redibujarNuevo();
+      dibujarFlota();
+    }
+  }
+
+  function marcarEnMapa(cual) {
+    if (marcando === cual) { terminarMarcado(); return; }
+    marcando = cual;
+    porId('np-marcar-origen').classList.toggle('activo', cual === 'origen');
+    porId('np-marcar-destino').classList.toggle('activo', cual === 'destino');
+    mapaEnvios.getContainer().classList.add('armado');
+    if (window.innerWidth <= 720) { alternarMenu(false); }      // en celular, la hoja tapa el mapa
+    mostrarAvisoMapa(cual === 'origen' ? 'Toca el mapa donde se recoge la carga' : 'Toca el mapa donde se entrega la carga');
+  }
+  function terminarMarcado() {
+    marcando = null;
+    ['np-marcar-origen', 'np-marcar-destino'].forEach(function (id) { var b = porId(id); if (b) { b.classList.remove('activo'); } });
+    if (mapaEnvios) { mapaEnvios.getContainer().classList.remove('armado'); }
+  }
+  function alClicMapaEnvios(e) {
+    if (vistaEnvios !== 'nuevo' || !marcando) { return; }
+    var cual = marcando;
+    terminarMarcado();
+    ponerPunto(cual, e.latlng.lat, e.latlng.lng, true);
+    if (window.innerWidth <= 720) { alternarMenu(true); }
+  }
+  function ponerPunto(cual, lat, lon, buscarNombre) {
+    nuevoPunto[cual] = { lat: Math.round(lat * 1e6) / 1e6, lon: Math.round(lon * 1e6) / 1e6 };
+    porId('np-' + cual + '-coords').textContent = '📍 ' + lat.toFixed(5) + ', ' + lon.toFixed(5);
+    porId('np-' + cual + '-dir').classList.remove('campo-error');
+    var campo = porId('np-' + cual + '-dir');
+    if (buscarNombre && (!campo.value.trim() || campo.dataset.auto === '1')) { nombrarPunto(cual, lat, lon); }
+    redibujarNuevo();
+    revisarCotizacion();
+  }
+  function redibujarNuevo() {
+    if (!capaNuevo) { return; }
+    capaNuevo.clearLayers();
+    marcadoresNuevo = {};
+    if (cotizacion) {
+      var linea = L.polyline(cotizacion.ruta.puntos, { color: '#FFFFFF', weight: 11, opacity: 0.95, lineJoin: 'round', interactive: false }).addTo(capaNuevo);
+      L.polyline(cotizacion.ruta.puntos, { color: '#1565D8', weight: 6, opacity: 1, lineJoin: 'round', interactive: false }).addTo(capaNuevo);
+      dibujarPuntos(capaNuevo, cotizacion.puntos_control.filter(function (p) { return p.tipo === 'control'; }));
+      linea.bringToBack();
+    }
+    [['origen', 'A', '#0F766E'], ['destino', 'B', '#C2410C']].forEach(function (x) {
+      var p = nuevoPunto[x[0]];
+      if (!p) { return; }
+      var m = L.marker([p.lat, p.lon], { icon: iconoLetra(x[1], x[2]), draggable: true, zIndexOffset: 400,
+                                         title: x[0] === 'origen' ? 'Origen (arrástralo para moverlo)' : 'Destino (arrástralo para moverlo)' }).addTo(capaNuevo);
+      m.on('dragend', function () { var ll = m.getLatLng(); ponerPunto(x[0], ll.lat, ll.lng, true); });
+      marcadoresNuevo[x[0]] = m;
+    });
+  }
+  function ajustarANuevo() {
+    var b = L.latLngBounds([]);
+    if (cotizacion) {
+      b.extend(L.polyline(cotizacion.ruta.puntos).getBounds());
+      cotizacion.candidatos.forEach(function (c) { if (c.ubicacion) { b.extend([c.ubicacion.lat, c.ubicacion.lon]); } });
+    }
+    ['origen', 'destino'].forEach(function (k) { if (nuevoPunto[k]) { b.extend([nuevoPunto[k].lat, nuevoPunto[k].lon]); } });
+    if (b.isValid()) { mapaEnvios.fitBounds(b, opcionesAjuste()); }
+  }
+
+  // ---- Buscar direcciones (Nominatim, el buscador de OpenStreetMap: se usa al presionar Buscar, no al escribir) ----
+  var NOMINATIM = 'https://nominatim.openstreetmap.org/';
+  function nombreCorto(lugar) {
+    var partes = String(lugar.display_name || '').split(',').map(function (s) { return s.trim(); }).filter(Boolean);
+    return partes.slice(0, 3).join(', ');
+  }
+  function buscarDireccion(cual) {
+    var campo = porId('np-' + cual + '-dir'), q = campo.value.trim(), caja = porId('np-' + cual + '-resultados');
+    if (q.length < 3) { caja.innerHTML = '<div class="sin-resultados">Escribe al menos 3 letras.</div>'; return; }
+    caja.innerHTML = '<div class="sin-resultados">Buscando…</div>';
+    var url = NOMINATIM + 'search?format=jsonv2&limit=5&countrycodes=co&accept-language=es&q=' + encodeURIComponent(q);
+    if (mapaEnvios) {
+      var b = mapaEnvios.getBounds();
+      url += '&viewbox=' + [b.getWest(), b.getNorth(), b.getEast(), b.getSouth()].map(function (x) { return x.toFixed(4); }).join(',');
+    }
+    fetch(url).then(function (r) { return r.json(); }).then(function (lugares) {
+      if (!lugares.length) { caja.innerHTML = '<div class="sin-resultados">No encontré esa dirección. Prueba con otra o toca el mapa.</div>'; return; }
+      caja.innerHTML = '';
+      lugares.forEach(function (lugar) {
+        var b = document.createElement('button');
+        b.type = 'button';
+        b.className = 'resultado-lugar';
+        b.textContent = nombreCorto(lugar);
+        b.title = lugar.display_name;
+        b.addEventListener('click', function () {
+          campo.value = nombreCorto(lugar);
+          campo.dataset.auto = '';
+          caja.innerHTML = '';
+          ponerPunto(cual, parseFloat(lugar.lat), parseFloat(lugar.lon), false);
+          mapaEnvios.setView([parseFloat(lugar.lat), parseFloat(lugar.lon)], 15);
+        });
+        caja.appendChild(b);
+      });
+    }).catch(function () { caja.innerHTML = '<div class="sin-resultados">El buscador no respondió. Puedes tocar el mapa.</div>'; });
+  }
+  // Al poner un punto tocando el mapa, se le busca un nombre (solo si el campo está vacío o lo llenó el buscador).
+  function nombrarPunto(cual, lat, lon) {
+    var campo = porId('np-' + cual + '-dir');
+    fetch(NOMINATIM + 'reverse?format=jsonv2&zoom=18&accept-language=es&lat=' + lat.toFixed(6) + '&lon=' + lon.toFixed(6))
+      .then(function (r) { return r.json(); })
+      .then(function (lugar) {
+        if (lugar && lugar.display_name && (!campo.value.trim() || campo.dataset.auto === '1')) {
+          campo.value = nombreCorto(lugar);
+          campo.dataset.auto = '1';
+        }
+      }).catch(function () {});
+  }
+
+  function calcularEnvio() {
+    limpiarErrores();
+    var d = leerFormulario();
+    if (!d.origen) { marcarError('origen', 'Falta el origen: búscalo o márcalo en el mapa.'); return; }
+    if (!d.destino) { marcarError('destino', 'Falta el destino: búscalo o márcalo en el mapa.'); return; }
+    if (!d.peso_kg) { marcarError('peso_kg', 'Falta el peso de la carga.'); return; }
+    var boton = porId('btn-calcular-envio');
+    boton.disabled = true;
+    boton.textContent = 'Calculando la ruta…';
+    pedirApi('POST', '/api/envios/cotizar', { origen: d.origen, destino: d.destino, peso_kg: d.peso_kg, tipo_carga: d.tipo_carga })
+      .then(function (c) {
+        exigir(c, 'candidatos');
+        cotizacion = c;
+        firmaCotizada = firmaDeCotizacion(d);
+        placaElegida = c.candidatos.length ? c.candidatos[0].placa : null;
+        renderizarCotizacion();
+        redibujarNuevo();
+        dibujarFlota();
+        ajustarANuevo();
+      })
+      .catch(function (e) { marcarError(e.campo, e.message); })
+      .then(function () { boton.disabled = false; boton.textContent = 'Calcular ruta y camión'; });
+  }
+  function renderizarCotizacion() {
+    var c = cotizacion, r = c.ruta;
+    porId('resultado-cotizacion').hidden = false;
+    porId('cotizacion-ruta').innerHTML =
+      '<div class="tarjeta-datos">' +
+        '<div><b>' + textoDistancia(r.distancia_m) + '</b><span>Distancia</span></div>' +
+        '<div><b>' + textoMinutos(r.duracion_s) + '</b><span>Tiempo</span></div>' +
+        '<div><b>' + (c.puntos_control.length - 2) + '</b><span>Puntos</span></div>' +
+      '</div>' +
+      '<p class="nota-ruta">' + (r.fuente === 'ors-hgv' ? 'Ruta para camión (openrouteservice).' : 'Ruta de OSRM (perfil de carro, tiempos ×1,25).') +
+      (r.aviso ? ' ' + escaparHtml(r.aviso) : '') + '</p>';
+    var caja = porId('np-candidatos');
+    if (!c.candidatos.length) {
+      var f = c.flota, motivo;
+      if (!f.disponibles) { motivo = 'No hay camiones disponibles en este momento.'; }
+      else if (!f.con_capacidad) { motivo = 'Ningún camión disponible soporta ' + textoKg(leerFormulario().peso_kg) + '.'; }
+      else if (!f.con_carroceria) { motivo = 'Ningún camión disponible tiene la carrocería para este tipo de carga.'; }
+      else { motivo = 'Los camiones que servirían tienen documentos vencidos.'; }
+      caja.innerHTML = '<div class="lista-vacia">' + motivo + '</div>';
+    } else {
+      caja.innerHTML = '';
+      c.candidatos.forEach(function (cam) {
+        var fila = document.createElement('label');
+        fila.className = 'candidato' + (cam.placa === placaElegida ? ' elegido' : '');
+        fila.innerHTML = '<input type="radio" name="candidato" value="' + escaparHtml(cam.placa) + '"' + (cam.placa === placaElegida ? ' checked' : '') + '>' +
+          '<span><b>' + escaparHtml(cam.placa) + '</b>' + (cam.recomendado ? ' <span class="chip chip-recomendado">Recomendado</span>' : '') +
+          '<small>' + escaparHtml(cam.configuracion_nombre) + ' · ' + escaparHtml(cam.carroceria_nombre) + ' · ' + textoKg(cam.capacidad_kg) + '</small>' +
+          '<small>A ' + textoDistancia(cam.distancia_origen_m) + ' del origen (en línea recta) · ' + escaparHtml(cam.marca + ' ' + cam.linea + ' ' + cam.modelo) + '</small></span>';
+        fila.querySelector('input').addEventListener('change', function () {
+          placaElegida = cam.placa;
+          Array.prototype.forEach.call(caja.querySelectorAll('.candidato'), function (x) { x.classList.toggle('elegido', x === fila); });
+        });
+        caja.appendChild(fila);
+      });
+    }
+    porId('btn-crear-envio').disabled = !placaElegida;
+    porId('resultado-cotizacion').scrollIntoView({ block: 'start', behavior: 'smooth' });
+  }
+  function crearEnvio() {
+    limpiarErrores();
+    if (!cotizacion || !placaElegida) { porId('aviso-nuevo').textContent = 'Primero calcula la ruta y elige un camión.'; return; }
+    var d = leerFormulario();
+    d.placa = placaElegida;
+    var boton = porId('btn-crear-envio');
+    boton.disabled = true;
+    boton.textContent = 'Creando el envío…';
+    pedirApi('POST', '/api/envios', d).then(function (r) {
+      exigir(r, 'envio');
+      mostrarAvisoMapa(r.envio.codigo + ' creado y asignado a ' + r.envio.placa);
+      limpiarFormularioEnvio();
+      abrirEnvio(r.envio.id);
+      actualizarInsignias();
+    }).catch(function (e) {
+      marcarError(e.campo, e.message);
+      if (e.estado === 409) { cargarFlota(false); }
+    }).then(function () { boton.disabled = !placaElegida; boton.textContent = 'Crear envío y asignar camión'; });
+  }
+  function limpiarFormularioEnvio() {
+    Array.prototype.forEach.call(document.querySelectorAll('#envios-nuevo input[type=text], #envios-nuevo input[type=tel], #envios-nuevo input[type=number]'),
+                                 function (el) { el.value = ''; el.dataset.auto = ''; });
+    porId('np-cargue').value = '';
+    nuevoPunto = { origen: null, destino: null };
+    ['origen', 'destino'].forEach(function (k) { porId('np-' + k + '-coords').textContent = ''; porId('np-' + k + '-resultados').innerHTML = ''; });
+    cotizacion = null;
+    placaElegida = null;
+    porId('resultado-cotizacion').hidden = true;
+    porId('btn-crear-envio').disabled = true;
+    limpiarErrores();
+  }
+  // Datos inventados para probar o mostrar rápido el formulario (Uninorte -> Puerto de Barranquilla).
+  function llenarEjemplo() {
+    var f = function (id, valor) { porId(id).value = valor; };
+    f('np-cliente-nombre', 'Distribuidora del Caribe S.A.S.'); f('np-cliente-nit', '900123456-7');
+    f('np-origen-dir', 'Universidad del Norte, Barranquilla'); f('np-cargue-contacto', 'Laura Gómez'); f('np-cargue-celular', '3001234567');
+    f('np-destino-dir', 'Puerto de Barranquilla'); f('np-destinatario-nombre', 'Carlos Pérez'); f('np-destinatario-celular', '3007654321');
+    f('np-descripcion', 'Cajas de electrodomésticos'); f('np-cantidad', '40'); f('np-peso', '3200'); f('np-valor', '45000000');
+    if (porId('np-tipo').querySelector('option[value=general]')) { f('np-tipo', 'general'); }
+    if (porId('np-empaque').querySelector('option[value=cajas]')) { f('np-empaque', 'cajas'); }
+    f('np-cargue', cargueSugerido());
+    ponerPunto('origen', 11.0190, -74.8505, false);
+    ponerPunto('destino', 10.9632, -74.7647, false);
+    ajustarANuevo();
+  }
+
+  // ---- Insignias de alertas (en el botón del menú y en "Envíos") ----
+  function actualizarInsignias() {
+    if (document.hidden) { return; }
+    pedirApi('GET', '/api/envios?estado=activos&limite=200').then(function (r) {
+      var total = exigir(r, 'envios').reduce(function (s, e) { return s + (e.alertas_activas || 0); }, 0);
+      ['insignia-menu', 'insignia-envios'].forEach(function (id) {
+        var el = porId(id);
+        el.textContent = total;
+        el.hidden = total === 0;
+      });
+      porId('boton-menu').title = total ? total + (total === 1 ? ' alerta activa' : ' alertas activas') : '';
+    }).catch(function () {});
+  }
+
+  // Refresco automático de la sección (cada 10 s) y de las insignias (cada 20 s).
+  setInterval(function () {
+    if (document.hidden || modoActual !== 'envios') { return; }
+    if (vistaEnvios === 'detalle' && envioAbierto && envioAbierto.datos &&
+        ['asignado', 'en_ruta', 'en_destino'].indexOf(envioAbierto.datos.estado) >= 0) { refrescarDetalle(false); }
+    else if (vistaEnvios === 'lista') { cargarListaEnvios(true); cargarFlota(false); }
+  }, 10000);
+  setInterval(actualizarInsignias, 20000);
+  setTimeout(actualizarInsignias, 1500);
+
+  // =====================================================================
+  // 11. EL ENVÍO EN TIEMPO REAL (P3-S2)
+  //     /datos trae "envio" cuando el recorrido en curso pertenece a un
+  //     envío: se dibuja su ruta planeada y sus puntos de control, y una
+  //     tarjeta con el avance, el retraso y las alertas.
+  // =====================================================================
+  var envioVivo;                    // undefined = el servidor no manda envíos; null = recorrido sin envío
+  var rutaVivo = { id: null, puntos: null };
+  var capaPlanVivo, capaPuntosVivo;
+  var firmaPuntosVivo = '', firmaTarjetaViaje = '';
+  var tarjetaViajePlegada = window.innerWidth <= 720;      // en celular empieza plegada
+  var alertasAvisadas = {};         // alertas que ya se anunciaron con un aviso sobre el mapa
+
+  mapa.createPane('planeada');
+  mapa.getPane('planeada').style.zIndex = 390;
+  capaPlanVivo = L.layerGroup().addTo(mapa);
+  capaPuntosVivo = L.layerGroup().addTo(mapa);
+
+  function actualizarEnvioVivo(e) {
+    envioVivo = e;
+    var tarjeta = porId('tarjeta-viaje');
+    if (!e) {
+      tarjeta.hidden = true;
+      if (rutaVivo.id !== null) { capaPlanVivo.clearLayers(); capaPuntosVivo.clearLayers(); rutaVivo = { id: null, puntos: null }; firmaPuntosVivo = ''; }
+      return;
+    }
+    if (rutaVivo.id !== e.id) {
+      rutaVivo = { id: e.id, puntos: null };
+      capaPlanVivo.clearLayers();
+      firmaPuntosVivo = '';
+      pedirApi('GET', '/api/envios/' + e.id).then(function (r) {
+        if (rutaVivo.id !== e.id || !r.envio || !r.envio.ruta) { return; }
+        rutaVivo.puntos = r.envio.ruta.puntos;
+        lineaPlaneada(capaPlanVivo, rutaVivo.puntos, 'planeada');
+      }).catch(function (err) { console.error(err); });
+    }
+    var firma = JSON.stringify(e.puntos_control.map(function (p) { return [p.orden, p.nivel]; }));
+    if (firma !== firmaPuntosVivo) {
+      firmaPuntosVivo = firma;
+      capaPuntosVivo.clearLayers();
+      dibujarPuntos(capaPuntosVivo, e.puntos_control);
+    }
+    // Una alerta nueva se anuncia sobre el mapa y despliega la tarjeta.
+    e.alertas.forEach(function (a) {
+      if (a.activa && !a.vista && !alertasAvisadas[a.id]) {
+        alertasAvisadas[a.id] = true;
+        mostrarAvisoMapa('⚠ ' + e.codigo + ': ' + textoAlerta(a));
+        tarjetaViajePlegada = false;
+      }
+    });
+    pintarTarjetaViaje();
+    tarjeta.hidden = false;
+  }
+  function htmlTarjetaViaje(e) {
+    var p = e.progreso, siguiente = proximoPunto(e), eta = etaDe(e, siguiente);
+    var activas = e.alertas.filter(function (a) { return a.activa; });
+    var nivel = e.estado === 'en_ruta' ? (p.nivel_retraso || 'a_tiempo') : null;
+    var cabecera = '<button type="button" class="viaje-cabecera" onclick="alternarTarjetaViaje()" aria-expanded="' + !tarjetaViajePlegada + '">' +
+      '<span class="viaje-chips"><span class="envio-codigo">' + e.codigo + '</span>' + chipEstado(e.estado) + (nivel ? chipNivel(nivel, p.retraso_s) : '') +
+      (activas.length ? '<span class="chip chip-alerta">⚠ ' + activas.length + '</span>' : '') + '</span>' +
+      '<span class="viaje-pct">' + p.porcentaje + ' %</span>' +
+      '<svg class="viaje-flecha" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg></button>';
+    if (tarjetaViajePlegada) { return cabecera; }
+    return cabecera +
+      '<div class="envio-ruta">' + htmlRutaCorta(e.origen.direccion, e.destino.direccion) + '</div>' +
+      '<div class="barra-avance"><i style="width:' + p.porcentaje + '%"></i></div>' +
+      '<div class="tarjeta-datos">' +
+        '<div><b>' + textoDistancia(p.recorrido_m) + '</b><span>Recorrido</span></div>' +
+        '<div><b>' + textoDistancia(e.plan.distancia_m) + '</b><span>Ruta</span></div>' +
+        '<div><b>' + (p.velocidad_kmh === null ? '—' : p.velocidad_kmh + ' km/h') + '</b><span>Velocidad</span></div>' +
+      '</div>' +
+      (e.estado === 'en_ruta' && siguiente
+        ? '<div class="viaje-linea">Próximo: <b>' + escaparHtml(siguiente.nombre) + '</b>' + (eta ? ' · ' + horaColombia(eta) : '') + '</div>' : '') +
+      (p.llegada_real ? '<div class="viaje-linea">Llegó a las <b>' + horaDe(p.llegada_real) + '</b></div>'
+        : (p.llegada_estimada ? '<div class="viaje-linea">Llegada estimada: <b>' + horaDe(p.llegada_estimada) + '</b></div>' : '')) +
+      htmlAlertas({ alertas: activas }, true) +
+      '<button type="button" class="enlace-detalle" onclick="abrirEnvio(' + e.id + ')">Ver el envío completo →</button>';
+  }
+  function pintarTarjetaViaje() {
+    if (!envioVivo) { return; }
+    var html = htmlTarjetaViaje(envioVivo);
+    var tarjeta = porId('tarjeta-viaje');
+    tarjeta.classList.toggle('con-alerta', envioVivo.alertas.some(function (a) { return a.activa; }));
+    tarjeta.classList.toggle('plegada', tarjetaViajePlegada);
+    if (html !== firmaTarjetaViaje) { firmaTarjetaViaje = html; tarjeta.innerHTML = html; }
+  }
+  function alternarTarjetaViaje() {
+    tarjetaViajePlegada = !tarjetaViajePlegada;
+    pintarTarjetaViaje();
+  }
+  // El envío dentro de la planilla flotante (al tocar el camión).
+  function htmlEnvioPlanilla(e) {
+    if (!e) { return ''; }
+    return '<div class="planilla-envio">' +
+      '<div class="planilla-fila"><span class="planilla-etq">Envío</span><span class="planilla-val">' + e.codigo + ' · ' + escaparHtml(e.placa) + '</span></div>' +
+      '<div class="planilla-fila"><span class="planilla-etq">Ruta</span><span class="planilla-val">' + htmlRutaCorta(e.origen.direccion, e.destino.direccion) + '</span></div>' +
+      '<div class="planilla-fila"><span class="planilla-etq">Carga</span><span class="planilla-val">' + escaparHtml(e.carga.tipo_nombre) + ' · ' + textoKg(e.carga.peso_kg) + '</span></div>' +
+      '</div>';
+  }
+
+  // =====================================================================
+  // 12. EL ENVÍO EN HISTÓRICOS (P3-S2)
+  // =====================================================================
+  var capaPlanHist = null;
+  function htmlEnvioTarjeta(e) {
+    if (!e) { return ''; }
+    return '<div class="tarjeta-envio-linea">📦 <b>' + e.codigo + '</b> <span>' + htmlRutaCorta(e.origen, e.destino) + '</span></div>';
+  }
+  function cargarEnvioHistorico(resumen) {
+    if (!capaPlanHist) {
+      mapaHistorico.createPane('planeada');
+      mapaHistorico.getPane('planeada').style.zIndex = 390;
+      capaPlanHist = L.layerGroup().addTo(mapaHistorico);
+    }
+    capaPlanHist.clearLayers();
+    var caja = porId('detalle-envio-hist');
+    caja.innerHTML = '';
+    if (!resumen.envio) { return; }
+    var id = resumen.id_recorrido;
+    pedirApi('GET', '/api/envios/' + resumen.envio.id).then(function (r) {
+      if (!rutaSel || rutaSel.resumen.id_recorrido !== id) { return; }
+      var e = exigir(r, 'envio');
+      if (e.ruta) { lineaPlaneada(capaPlanHist, e.ruta.puntos, 'planeada'); }
+      dibujarPuntos(capaPlanHist, e.puntos_control);
+      var pasados = e.puntos_control.filter(function (p) { return p.hora_real && p.tipo !== 'salida'; });
+      var tarde = pasados.filter(function (p) { return p.nivel === 'aviso' || p.nivel === 'alerta'; }).length;
+      caja.innerHTML = '<span class="planilla-titulo">Envío</span>' +
+        '<div class="envio-cabecera"><span class="envio-codigo">' + e.codigo + '</span>' + chipEstado(e.estado) + '</div>' +
+        '<div class="envio-ruta">' + htmlRutaCorta(e.origen.direccion, e.destino.direccion) + '</div>' +
+        '<div class="envio-meta"><span>Puntos: ' + pasados.length + ' de ' + (e.puntos_control.length - 1) + (tarde ? ' (' + tarde + ' con retraso)' : '') + '</span>' +
+        '<span>Alertas: ' + e.alertas.length + '</span></div>' +
+        '<div class="leyenda-planeada"><i></i>Ruta planeada · los círculos son los puntos de control</div>' +
+        '<button type="button" class="enlace-detalle" onclick="abrirEnvio(' + e.id + ')">Ver el envío →</button>';
+    }).catch(function (err) { console.error(err); });
+  }
+  function limpiarEnvioHistorico() {
+    if (capaPlanHist) { capaPlanHist.clearLayers(); }
+    var caja = porId('detalle-envio-hist');
+    if (caja) { caja.innerHTML = ''; }
+  }
+
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape' && marcando) { terminarMarcado(); }
+  });
 </script>
 </body>
 </html>
