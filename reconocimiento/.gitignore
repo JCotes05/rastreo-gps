@@ -1,0 +1,6 @@
+# Datos biometricos y personales: NUNCA a GitHub
+conductores_rostros.json
+conductores_rostros.json.tmp
+fotos/
+registro_identificaciones.csv
+__pycache__/
