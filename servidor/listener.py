@@ -10,6 +10,7 @@ import socket
 import psycopg2
 from datetime import datetime, timezone, timedelta
 from basedatos import obtener_conexion, crear_tabla
+import monitoreo  # P3-S2
 
 # P3-S1: el puerto se puede cambiar con la variable de entorno PUERTO_UDP
 # (solo para pruebas). Si no existe, sigue siendo 5000 como siempre.
@@ -166,6 +167,8 @@ def iniciar_listener():
 
         latitud, longitud, hora_gps, id_recorrido = resultado
         cedula = extraer_cedula(texto)  # P3-S1
+        id_envio = monitoreo.extraer_envio(texto)  # P3-S2
+        velocidad = monitoreo.extraer_velocidad(texto)  # P3-S2
         guardar_ubicacion(ip_origen, latitud, longitud, hora_gps, id_recorrido)
         fecha_hora = datetime.now(COLOMBIA).strftime("%d/%m/%Y %H:%M:%S")
         print(f"[GUARDADO] {fecha_hora} — {ip_origen} → lat={latitud}, lon={longitud}, recorrido={id_recorrido}")
@@ -180,6 +183,12 @@ def iniciar_listener():
                     planillas_resueltas.add(id_recorrido)
             except Exception as error:
                 print(f"[ERROR] Error inesperado con la planilla: {error}")
+
+        # P3-S2: vigilancia del viaje (avance, puntos de control, retraso, km, desvío y alertas).
+        # Va al final y por separado: si algo falla aquí, la posición y la planilla ya quedaron
+        # guardadas, y monitoreo.procesar() nunca lanza errores.
+        if id_envio:
+            monitoreo.procesar(id_envio, id_recorrido, latitud, longitud, velocidad)
 
 
 if __name__ == "__main__":
