@@ -389,11 +389,15 @@ def puntos_de_control(ruta, nombre_origen="Salida", nombre_destino="Llegada"):
             i = giro["indice"]
             d, t, (lat, lon) = dist[i], tiempo[i], pts[i]
             nombre = _nombre_cruce(giro) or f"Km {d / 1000:.1f}"
+            if " con " not in nombre and not nombre.startswith("Km "):
+                nombre = f"{nombre} (km {d / 1000:.1f})"     # giro sin cruce con nombre: se ubica por el km
         else:
             lat, lon, t = interpolar(ruta, objetivo)
             d = objetivo
             via = _via_en(ruta, d)
             nombre = f"{via} (km {d / 1000:.1f})" if via else f"Km {d / 1000:.1f}"
+        if nombre in {p["nombre"] for p in lista}:
+            nombre = f"{nombre} (km {d / 1000:.1f})"          # dos puntos no pueden llamarse igual
         lista.append({"orden": k, "tipo": "control", "nombre": nombre, "lat": lat, "lon": lon,
                       "distancia_m": round(d), "tiempo_plan_s": round(t)})
     lista.append({"orden": n + 1, "tipo": "llegada", "nombre": nombre_destino[:80],

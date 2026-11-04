@@ -35,6 +35,7 @@ import psycopg2
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse, parse_qs
 from basedatos import obtener_conexion, crear_tabla
+import api_envios  # P3-S2
 
 # P3-S1: el puerto se puede cambiar con la variable de entorno PUERTO_HTTP
 # (solo para pruebas). Si no existe, sigue siendo 8080 como siempre.
@@ -158,7 +159,8 @@ def obtener_datos_actuales():
     fila = obtener_ultima_ubicacion()
     nombre = obtener_nombre_integrante()
     if fila is None:
-        return {"lat": "—", "lon": "—", "fecha": "—", "hora": "—", "nombre": nombre, "planilla": None}  # P3-S1
+        return {"lat": "—", "lon": "—", "fecha": "—", "hora": "—", "nombre": nombre, "planilla": None,  # P3-S1
+                "envio": None}  # P3-S2
 
     latitud, longitud, hora_gps, hora_recepcion, id_recorrido = fila  # P3-S1
     fecha = hora_recepcion.split("T")[0]
@@ -166,7 +168,8 @@ def obtener_datos_actuales():
 
     planilla = obtener_planilla_de(id_recorrido)  # P3-S1
     return {"lat": str(latitud), "lon": str(longitud), "fecha": fecha, "hora": hora, "nombre": nombre,
-            "planilla": planilla}  # P3-S1
+            "planilla": planilla,  # P3-S1
+            "envio": api_envios.resumen_envio_de_recorrido(id_recorrido)}  # P3-S2
 
 
 def obtener_puntos_del_recorrido_actual():
@@ -365,6 +368,7 @@ def obtener_lista_recorridos(limite=30, desde=None, hasta=None):
         cursor.close()
         conexion.close()
     _agregar_planillas(resultado)  # P3-S1
+    api_envios.agregar_envios(resultado)  # P3-S2
     return resultado
 
 
@@ -411,6 +415,7 @@ def obtener_recorridos_por_zona(lat, lon, radio, limite=30):
         cursor.close()
         conexion.close()
     _agregar_planillas(resultado)  # P3-S1
+    api_envios.agregar_envios(resultado)  # P3-S2
     return resultado
 
 
@@ -642,6 +647,11 @@ class ManejadorDeSolicitudes(BaseHTTPRequestHandler):
         ruta = urlparse(self.path)
         parametros = parse_qs(ruta.query)
 
+        if ruta.path.startswith("/api/"):  # P3-S2
+            estado, datos = api_envios.atender("GET", ruta.path, parametros, None, self.headers.get("Authorization"))
+            self._responder(estado, datos)
+            return
+
         try:
             if ruta.path == "/recorrido":
                 datos = obtener_puntos_del_recorrido_actual()
@@ -681,6 +691,33 @@ class ManejadorDeSolicitudes(BaseHTTPRequestHandler):
         cuerpo = json.dumps(datos).encode("utf-8")
         self.send_response(estado)
         self.send_header("Content-Type", "application/json; charset=utf-8")
+        self.end_headers()
+        self.wfile.write(cuerpo)
+
+    # P3-S2: la API de camiones y envíos recibe datos por POST (JSON).
+    def do_POST(self):
+        ruta = urlparse(self.path)
+        try:
+            largo = int(self.headers.get("Content-Length") or 0)
+        except ValueError:
+            largo = -1
+        if not ruta.path.startswith("/api/"):
+            self._responder(404, {"error": "Ruta no encontrada."})
+        elif largo < 0 or largo > api_envios.MAX_CUERPO:
+            self._responder(413, {"error": "El contenido es demasiado grande."})
+        else:
+            cuerpo = self.rfile.read(largo) if largo else b""
+            estado, datos = api_envios.atender("POST", ruta.path, parse_qs(ruta.query), cuerpo,
+                                               self.headers.get("Authorization"))
+            self._responder(estado, datos)
+
+    # P3-S2
+    def _responder(self, estado, datos):
+        cuerpo = json.dumps(datos, ensure_ascii=False).encode("utf-8")
+        self.send_response(estado)
+        self.send_header("Content-Type", "application/json; charset=utf-8")
+        self.send_header("Content-Length", str(len(cuerpo)))
+        self.send_header("Cache-Control", "no-store")
         self.end_headers()
         self.wfile.write(cuerpo)
 
