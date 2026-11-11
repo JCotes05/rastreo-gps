@@ -74,6 +74,13 @@ object ApiOrbita {
     suspend fun eventos(token: String, cuerpo: JSONObject): Respuesta =
         pedir("POST", "/api/camiones/viaje/eventos", cuerpo, token)
 
+    /**
+     * P3-S3 (esquema híbrido): el servidor reconoce los rostros que detectó y recortó el
+     * ESP32-CAM de la cabina (JPEG en base64). Responde estado reconocido | no_reconocido.
+     */
+    suspend fun identificarConductor(token: String, rostros: List<String>): Respuesta =
+        pedir("POST", "/api/camiones/conductor/identificar", JSONObject().put("rostros", JSONArray(rostros)), token)
+
     // ---------------------------------------------------------------
     //  Un pedido HTTP (en segundo plano; la red no se usa en el hilo principal)
     // ---------------------------------------------------------------

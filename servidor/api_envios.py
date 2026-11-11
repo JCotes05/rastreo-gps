@@ -18,6 +18,8 @@ Para la APP del camión (con "Authorization: Bearer <token>", salvo registro y l
   POST /api/camiones/viaje/finalizar  termina el viaje en curso
   POST /api/camiones/viaje/eventos    P3-S3: lote de eventos del ESP32 de sensores y su latido
                                       (ver eventos_carga.py)
+  POST /api/camiones/conductor/identificar   P3-S3: {"rostros": [jpg base64...]} del ESP32-CAM;
+                                      responde el conductor reconocido (ver reconocimiento_facial.py)
 
 Para la PÁGINA:
   GET  /api/catalogo                  configuraciones, carrocerías, tipos de carga y empaques
@@ -53,6 +55,7 @@ import psycopg2.errors
 import psycopg2.extras
 
 import eventos_carga  # P3-S3
+import reconocimiento_facial  # P3-S3 (esquema híbrido)
 import rutas
 from basedatos import obtener_conexion
 
@@ -709,6 +712,30 @@ def eventos_del_viaje(p):
                  "rechazados": rechazados, "alerta_carga_abierta": carga_abierta, "sensores": sensores}
 
 
+def identificar_conductor(p):
+    """
+    P3-S3 (esquema híbrido). Cuerpo: {"rostros": ["<jpg base64>", ...]} — los recortes que el
+    ESP32-CAM de la cabina mandó al celular. Responde reconocido (cédula y nombre) o
+    no_reconocido (ver reconocimiento_facial.py). Error 429 si el camión debe esperar.
+    """
+    try:
+        jpgs = reconocimiento_facial.leer_rostros(p.datos)
+    except reconocimiento_facial.DatoInvalido as error:
+        raise ErrorAPI(400, str(error), "rostros") from None
+    with _bd() as cur:
+        camion = _camion_autenticado(cur, p.autorizacion)
+        try:
+            resultado = reconocimiento_facial.identificar(cur, camion["placa"], jpgs)
+        except reconocimiento_facial.EnEspera as error:
+            raise ErrorAPI(429, str(error)) from None
+        except reconocimiento_facial.NoDisponible as error:
+            raise ErrorAPI(503, str(error)) from None
+        except psycopg2.errors.UndefinedTable:
+            raise ErrorAPI(503, "La base de datos todavía no tiene las huellas (falta ejecutar sql/p3s3_rostros.sql).") from None
+    resultado.pop("similitudes", None)
+    return 200, resultado
+
+
 # ---------------------------------------------------------------------
 # PÁGINA: catálogo, flota y envíos
 # ---------------------------------------------------------------------
@@ -973,6 +1000,7 @@ _RUTAS = [
     ("GET",  r"/api/camiones/viaje", viaje_actual),
     ("POST", r"/api/camiones/viaje/finalizar", finalizar_viaje),
     ("POST", r"/api/camiones/viaje/eventos", eventos_del_viaje),      # P3-S3
+    ("POST", r"/api/camiones/conductor/identificar", identificar_conductor),   # P3-S3
     ("GET",  r"/api/camiones", flota),
     ("GET",  r"/api/catalogo", catalogo),
     ("POST", r"/api/envios/cotizar", cotizar_envio),

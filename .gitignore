@@ -20,3 +20,6 @@ __pycache__/
 /captures
 .externalNativeBuild
 .cxx
+
+# Llaves SSH: nunca al repositorio
+*.pem

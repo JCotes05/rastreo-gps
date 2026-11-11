@@ -7,6 +7,9 @@ Archivos
   reconocer.py    Prueba en vivo: muestra el nombre y la similitud de cada rostro.
   servicio_reconocimiento.py   Atiende al celular por Bluetooth (paso 6): IDENTIFICAR -> CONDUCTOR;...
   calibrar.py     Mide falsos aceptados / falsos rechazados para elegir el umbral con datos.
+  capturar_esp.py P3-S3: toma fotos del rostro CON EL ESP32-CAM (por el cable USB) para
+                  registrar al conductor con registrar.py --fotos. Ver
+                  firmware/esp32cam_reconocimiento/LEEME.txt (esquema hibrido ESP32-CAM + servidor).
   modelos/        YuNet (detecta rostros) y SFace (saca la "huella"), de OpenCV Zoo.
 
 Se crean al usarlo (NO se suben a GitHub, son datos biometricos):

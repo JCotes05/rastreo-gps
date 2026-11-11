@@ -741,9 +741,11 @@ class MainActivity : ComponentActivity() {
                     empezarEnvio(resultado.cedula, resultado.nombre)
                 }
                 is ResultadoVerificacion.NoReconocido -> {
+                    val porque = resultado.motivo?.trim()?.removeSuffix(".")
+                        ?: "Ningún conductor registrado coincidió"
                     fase = FaseVerificacion.Fallida(
                         "Conductor no reconocido",
-                        "Ningún conductor registrado coincidió (similitud ${"%.2f".format(resultado.similitud)}). " +
+                        "$porque (similitud ${"%.2f".format(resultado.similitud)}). " +
                                 "Mira de frente a la cámara, con buena luz, y reintenta."
                     )
                 }
