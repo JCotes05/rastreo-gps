@@ -28,6 +28,10 @@ import androidx.compose.runtime.snapshots.SnapshotStateMap
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Stroke
@@ -1038,6 +1042,60 @@ private fun ContenidoViajeAsignado(
     }
 }
 
+/**
+ * P3-S3: vista previa del ESP32-CAM mientras identifica. Se muestra en espejo (como una selfie)
+ * para que moverse a la izquierda mueva la cara a la izquierda. La caja del rostro sale verde
+ * si está bien ubicado, amarilla si está lejos; sin caja, la cámara no ve ninguna cara.
+ */
+@Composable
+private fun VistaPreviaCamara(vista: VistaPrevia, onClick: () -> Unit) {
+    val (color, texto) = when {
+        vista.caja == null -> NaranjaMarca to "No veo tu cara: ponte frente a la cámara"
+        vista.sirve -> Color(0xFF2BD47D) to "Cara bien ubicada: quédate quieto"
+        else -> Color(0xFFFFC23D) to "Acércate un poco a la cámara"
+    }
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        Box(
+            modifier = Modifier
+                .width(280.dp)
+                .aspectRatio(vista.ancho.toFloat() / vista.alto.coerceAtLeast(1))
+                .clip(RoundedCornerShape(16.dp))
+                .border(BorderStroke(3.dp, color), RoundedCornerShape(16.dp))
+                .clickable(onClick = onClick)
+        ) {
+            Image(
+                bitmap = vista.imagen,
+                contentDescription = "Vista de la cámara del equipo de reconocimiento",
+                contentScale = ContentScale.FillBounds,
+                modifier = Modifier
+                    .fillMaxSize()
+                    .graphicsLayer(scaleX = -1f)
+            )
+            vista.caja?.let { c ->
+                Canvas(modifier = Modifier.fillMaxSize().graphicsLayer(scaleX = -1f)) {
+                    val ex = size.width / vista.ancho
+                    val ey = size.height / vista.alto
+                    drawRect(
+                        color = color,
+                        topLeft = Offset(c[0] * ex, c[1] * ey),
+                        size = Size((c[2] - c[0]) * ex, (c[3] - c[1]) * ey),
+                        style = Stroke(width = 3.dp.toPx())
+                    )
+                }
+            }
+        }
+        Text(
+            text = texto,
+            fontFamily = Manrope,
+            fontWeight = FontWeight.Bold,
+            fontSize = 13.sp,
+            color = color,
+            textAlign = TextAlign.Center,
+            modifier = Modifier.padding(top = 8.dp, bottom = 6.dp)
+        )
+    }
+}
+
 /** Botón radar + estado de la verificación (para iniciar o reanudar el viaje). */
 @Composable
 private fun ZonaDeInicio(
@@ -1048,12 +1106,18 @@ private fun ZonaDeInicio(
     acciones: AccionesCamion
 ) {
     val verificando = fase is FaseVerificacion.EnCurso
+    val vista = (fase as? FaseVerificacion.EnCurso)?.vista
     Column(modifier = Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
-        BotonRadar(
-            estado = if (verificando) EstadoBoton.VERIFICANDO else EstadoBoton.REPOSO,
-            onClick = acciones.onBotonViaje,
-            tamano = 200.dp
-        )
+        if (vista != null) {
+            // P3-S3: lo que ve el ESP32-CAM, para ubicar la cara (tocarla cancela, como el botón).
+            VistaPreviaCamara(vista, onClick = acciones.onBotonViaje)
+        } else {
+            BotonRadar(
+                estado = if (verificando) EstadoBoton.VERIFICANDO else EstadoBoton.REPOSO,
+                onClick = acciones.onBotonViaje,
+                tamano = 200.dp
+            )
+        }
         TextoFuerte(
             when (fase) {
                 is FaseVerificacion.EnCurso -> "Verificando conductor"
