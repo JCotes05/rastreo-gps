@@ -1456,6 +1456,7 @@ private fun TarjetaSensores(viaje: Viaje, sensoresNombre: String?, enVivo: Boole
             )
         }
         Spacer(modifier = Modifier.height(10.dp))
+        // Dos filas de dos: con cuatro columnas "Cerrada" no cabía en celulares angostos.
         Row {
             Dato(
                 "CARGA",
@@ -1464,6 +1465,9 @@ private fun TarjetaSensores(viaje: Viaje, sensoresNombre: String?, enVivo: Boole
             )
             Dato("FRENADAS", maxOf(EstadoSensores.frenadas.takeIf { enVivo } ?: 0, servidor?.frenadas ?: 0).toString(),
                 modifier = Modifier.weight(1f))
+        }
+        Spacer(modifier = Modifier.height(10.dp))
+        Row {
             Dato("HUECOS", maxOf(EstadoSensores.huecos.takeIf { enVivo } ?: 0, servidor?.huecos ?: 0).toString(),
                 modifier = Modifier.weight(1f))
             Dato("CURVAS", maxOf(EstadoSensores.curvas.takeIf { enVivo } ?: 0, servidor?.curvas ?: 0).toString(),

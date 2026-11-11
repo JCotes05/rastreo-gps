@@ -168,6 +168,24 @@ def leer_teclas(esp):
                 esp.tecla(t)
 
 
+def leer_ordenes(esp, ruta):
+    """--ordenes: cada letra que se agregue al archivo se toma como una tecla (para manejarlo desde otro programa)."""
+    open(ruta, "w").close()
+    leido = 0
+    while esp.activo:
+        try:
+            with open(ruta, encoding="utf-8") as f:
+                f.seek(leido)
+                nuevo = f.read()
+                leido = f.tell()
+        except OSError:
+            nuevo = ""
+        for t in nuevo:
+            if t.strip():
+                esp.tecla(t)
+        time.sleep(0.3)
+
+
 def modo_consola():
     print("MODO CONSOLA: no hay celular; se muestra lo que el ESP mandaría.")
     print("Escriba mensajes del celular con el prefijo ':' (por ejemplo  :INICIO;ENVIO:7  o  :PING).")
@@ -185,7 +203,7 @@ def modo_consola():
                 esp.tecla(t)
 
 
-def modo_puerto(puerto):
+def modo_puerto(puerto, ordenes=None):
     while True:
         try:
             with serial.serial_for_url(puerto, baudrate=115200, timeout=1, write_timeout=3) as conexion:
@@ -198,7 +216,10 @@ def modo_puerto(puerto):
                 esp = EspSimulado(escribir)
                 esp.enviar("HOLA;DISP:SENSORES;VER:1")
                 threading.Thread(target=esp.latir, daemon=True).start()
-                threading.Thread(target=leer_teclas, args=(esp,), daemon=True).start()
+                if ordenes:
+                    threading.Thread(target=leer_ordenes, args=(esp, ordenes), daemon=True).start()
+                else:
+                    threading.Thread(target=leer_teclas, args=(esp,), daemon=True).start()
                 pendiente = b""
                 while esp.activo:
                     pendiente += conexion.read(conexion.in_waiting or 1)
@@ -219,6 +240,8 @@ def main():
     parser.add_argument("--puerto", help="Puerto COM entrante de Bluetooth, por ejemplo COM7")
     parser.add_argument("--consola", action="store_true", help="Probar sin celular")
     parser.add_argument("--listar-puertos", action="store_true")
+    parser.add_argument("--ordenes", metavar="ARCHIVO",
+                        help="leer las teclas (f h c a z s q) de este archivo en vez del teclado")
     args = parser.parse_args()
     if (args.puerto or args.listar_puertos) and serial is None:
         sys.exit("Falta la librería pyserial. Instálala con:  py -m pip install pyserial")
@@ -232,7 +255,7 @@ def main():
         if args.consola:
             modo_consola()
         elif args.puerto:
-            modo_puerto(args.puerto)
+            modo_puerto(args.puerto, args.ordenes)
         else:
             parser.print_usage()
             sys.exit("Indique --puerto COMx o --consola.")
