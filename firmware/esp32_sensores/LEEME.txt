@@ -1,0 +1,78 @@
+ORBITA - ESP32 de sensores de la carga (P3-S3)  ·  BORRADOR, todavia sin probar en hardware
+=========================================================================================
+
+Que hace
+  Va en la zona de la carga. Detecta frenadas bruscas, huecos y curvas bruscas con el
+  GY-521 (MPU-6050) y si entra luz a la carga (carga abierta) con una fotoresistencia.
+  No usa Wi-Fi: le manda todo al celular del conductor por Bluetooth (SPP), y la app
+  lo sube al servidor con la posicion GPS y la hora.
+
+Materiales
+  - ESP32 DevKit (ESP32-WROOM-32, 30 o 38 pines). NO el ESP32-CAM.
+  - Modulo GY-521 (MPU-6050).
+  - Fotoresistencia (LDR, la comun de 5 mm) + resistencia de 10 kOhm.
+  - Protoboard y cables.
+
+Conexiones
+  GY-521          ESP32
+  VCC  --------   3V3
+  GND  --------   GND
+  SCL  --------   GPIO 22
+  SDA  --------   GPIO 21
+  (XDA, XCL, AD0 e INT sin conectar; AD0 sin conectar = direccion 0x68)
+
+  Fotoresistencia en divisor de voltaje:
+     3V3 ---[ LDR ]---+---[ 10 kOhm ]--- GND
+                      |
+                   GPIO 34
+  Con luz, la LDR baja su resistencia y GPIO 34 sube (lectura alta = carga ABIERTA).
+  GPIO 34 es del ADC1: los pines del ADC2 NO funcionan mientras el Bluetooth esta activo.
+
+  Montaje del GY-521: plano, con el eje X (marcado en el modulo) hacia ADELANTE del
+  camion y Z hacia ARRIBA. Si queda distinto, cambie EJE_LONGITUDINAL, EJE_LATERAL,
+  EJE_VERTICAL y SIGNO_LONGITUDINAL al inicio del .ino.
+
+Como subirlo (Arduino IDE 2)
+  1. Archivo > Preferencias > "URLs adicionales de gestor de placas":
+       https://espressif.github.io/arduino-esp32/package_esp32_index.json
+  2. Herramientas > Placa > Gestor de placas: instale "esp32 by Espressif Systems".
+  3. Herramientas > Placa: "ESP32 Dev Module". Puerto: el COM del ESP32 (cable USB de datos).
+  4. Abra esp32_sensores.ino y toque Subir. Si se queda en "Connecting....", mantenga
+     presionado el boton BOOT del ESP32 hasta que empiece a subir.
+  5. Herramientas > Monitor serie a 115200 baudios, con "Nueva linea".
+  No necesita librerias extra: BluetoothSerial y Wire vienen con la placa.
+
+Calibracion (en el monitor serie)
+  CERO       con el sensor QUIETO, mide 2 s y guarda el desfase de los ejes.
+  CAL        muestra ax, ay, az (en g) y la luz cada 100 ms. Otra vez CAL para salir.
+             - Frenada: empuje la protoboard hacia adelante y detengala de golpe: ax baja.
+             - Hueco: de un golpe seco hacia arriba: az se aleja de 1.
+             - Luz: tape y destape la LDR y anote los valores de oscuro y de luz.
+  UMBRALES   muestra los umbrales actuales.
+  PRUEBA     manda una frenada de prueba por Bluetooth (sirve para probar la app).
+  Los umbrales estan como constantes al inicio del .ino (seccion CONFIGURACION):
+    frenada  < -0,40 g sostenida 200 ms o mas
+    hueco    pico vertical > 0,8 g de menos de 150 ms
+    curva    lateral > 0,40 g sostenida 300 ms
+    despues de cada evento, 2 s sin repetir el mismo tipo
+    luz      abre por encima de 400, cierra por debajo de 250 (histeresis), sostenido 0,5 s
+  Ajuste LUZ_ABRE y LUZ_CIERRA con lo que midio en CAL (la LDR cambia mucho de una a otra).
+
+Vincular con el celular
+  1. Encienda el ESP32. En el celular: Ajustes > Bluetooth > vincular "Orbita-Sensores".
+  2. En la app: menu (tres puntos) > "Sensores de la carga" > elegir "Orbita-Sensores".
+  3. Al tocar "Iniciar viaje", la app se conecta, manda INICIO;ENVIO:<n> y desde ahi el
+     ESP manda los eventos. Al finalizar, manda FIN. El LED azul del DevKit se enciende
+     mientras el celular esta conectado.
+
+Protocolo (una linea por mensaje, terminada en \n)
+  Celular -> ESP:  PING | INICIO;ENVIO:<id> | FIN
+  ESP -> Celular:  PONG
+                   HOLA;DISP:SENSORES;VER:1
+                   EVENTO;TIPO:FRENADA|HUECO|CURVA;G:<g>;SEQ:<n>
+                   LUZ;ESTADO:ABIERTA|CERRADA;NIVEL:<0-4095>;SEQ:<n>
+                   LATIDO;LUZ:<nivel>;ESTADO:ABIERTA|CERRADA     (cada 10 s)
+
+Sin hardware
+  reconocimiento/simulador_esp_sensores.py hace exactamente lo mismo desde el PC por
+  un puerto COM Bluetooth (teclas f, h, c, a, z).

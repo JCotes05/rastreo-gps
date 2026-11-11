@@ -611,6 +611,31 @@
     width: 24px; height: 24px; border-radius: 50%; background: #C62828; color: #fff; border: 2px solid #fff;
     display: flex; align-items: center; justify-content: center; font-size: 12px; box-shadow: 0 2px 6px rgba(0, 0, 0, 0.35);
   }
+  /* P3-S3: eventos de la carga (frenada, hueco, curva, luz) */
+  .marca-evento { background: none; border: 0; }
+  .marca-evento div {
+    width: 22px; height: 22px; border-radius: 50%; border: 2px solid #fff; box-sizing: border-box;
+    display: flex; align-items: center; justify-content: center; color: #fff; font-size: 11px; font-weight: 800;
+    box-shadow: 0 1px 5px rgba(11, 31, 58, 0.45); font-family: 'Manrope', system-ui, sans-serif;
+  }
+  .marca-evento.luz_cerrada div { width: 16px; height: 16px; font-size: 8px; }
+  .sensores-estado { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+  .sensores-estado small { font-size: 11px; font-weight: 600; color: var(--medio); }
+  .chip-carga-abierta { background: #C62828; color: #fff; }
+  .chip-carga-cerrada { background: rgba(15, 118, 110, 0.14); color: #0F766E; }
+  .chip-carga-nada { background: rgba(167, 177, 190, 0.3); color: var(--medio); }
+  .conteo-eventos { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 8px; }
+  .conteo-eventos span { display: inline-flex; align-items: center; gap: 5px; font-size: 11.5px; font-weight: 700; }
+  .letra-evento {
+    width: 18px; height: 18px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center;
+    color: #fff; font-size: 9.5px; font-weight: 800; flex: none;
+  }
+  .lista-eventos { margin-top: 8px; border-top: 1px solid rgba(167, 177, 190, 0.55); }
+  .evento-item { display: grid; grid-template-columns: 18px 1fr auto; gap: 8px; align-items: center; padding: 5px 0;
+                 border-bottom: 1px solid rgba(167, 177, 190, 0.35); font-size: 12px; font-weight: 700; }
+  .evento-item small { font-size: 11px; font-weight: 600; color: var(--medio); white-space: nowrap; }
+  .evento-item.clicable { cursor: pointer; }
+  .evento-item.clicable:hover { background: rgba(31, 59, 92, 0.06); }
   .icono-flota { background: none; border: 0; }
   .flota-in {
     width: 34px; height: 34px; border-radius: 50%; display: flex; align-items: center; justify-content: center;
@@ -2786,8 +2811,119 @@
   function textoAlerta(a) {
     if (a.tipo === 'desvio') { return 'Desvío de ' + textoDistancia(a.valor_max) + ' de la ruta'; }
     if (a.tipo === 'retraso') { return 'Retraso de ' + textoRetraso(a.valor_max).replace(' tarde', ''); }
+    if (a.tipo === 'carga_abierta') { return 'Carga abierta en plena ruta'; }      // P3-S3
     return a.tipo;
   }
+
+  // P3S3-INICIO ----------------------------------------------------------
+  // Eventos de la carga (ESP32 de sensores, P3-S3). Si el servidor no los
+  // manda (servidor viejo o sin p3s3.sql), estas funciones no dibujan nada.
+  var EVENTO_CARGA = {
+    frenada:     { letra: 'F', color: '#E4572E', nombre: 'Frenada brusca', plural: 'frenadas' },
+    hueco:       { letra: 'H', color: '#8D6E63', nombre: 'Hueco', plural: 'huecos' },
+    curva:       { letra: 'C', color: '#7E57C2', nombre: 'Curva brusca', plural: 'curvas' },
+    luz_abierta: { letra: '☀', color: '#D49100', nombre: 'Carga abierta', plural: 'aperturas' },
+    luz_cerrada: { letra: '●', color: '#5C6B80', nombre: 'Carga cerrada', plural: 'cierres' }
+  };
+  function sensoresDe(e) {
+    var s = e && e.sensores;
+    return (s && Array.isArray(s.eventos)) ? s : null;
+  }
+  function textoValorEvento(ev) {
+    if (ev.valor === null || ev.valor === undefined) { return ''; }
+    if (ev.tipo === 'luz_abierta' || ev.tipo === 'luz_cerrada') { return 'luz ' + Math.round(ev.valor); }
+    return String(Math.round(ev.valor * 100) / 100).replace('.', ',') + ' g';
+  }
+  function kmEvento(ev) {
+    return (ev.avance_m === null || ev.avance_m === undefined) ? '' : 'km ' + (ev.avance_m / 1000).toFixed(1).replace('.', ',');
+  }
+  function popupEvento(ev) {
+    var t = EVENTO_CARGA[ev.tipo];
+    var valor = textoValorEvento(ev), km = kmEvento(ev);
+    return '<b>' + t.nombre + '</b>' + (valor ? ' · ' + valor : '') + '<br>' +
+           (ev.momento ? horaDe(ev.momento) : '') + (km ? ' · ' + km : '');
+  }
+  function letraEvento(tipo) {
+    var t = EVENTO_CARGA[tipo];
+    return '<span class="letra-evento" style="background:' + t.color + '">' + t.letra + '</span>';
+  }
+  // Marca cada evento sobre el mapa, en el lugar donde ocurrió.
+  function dibujarEventos(capa, e) {
+    var s = sensoresDe(e);
+    if (!s || !capa) { return; }
+    s.eventos.forEach(function (ev) {
+      if (ev.lat === null || ev.lon === null || ev.lat === undefined || !EVENTO_CARGA[ev.tipo]) { return; }
+      var lado = ev.tipo === 'luz_cerrada' ? 16 : 22;
+      L.marker([ev.lat, ev.lon], {
+        icon: L.divIcon({ className: 'marca-evento ' + ev.tipo, iconSize: [lado, lado], iconAnchor: [lado / 2, lado / 2],
+                          html: '<div style="background:' + EVENTO_CARGA[ev.tipo].color + '">' + EVENTO_CARGA[ev.tipo].letra + '</div>' }),
+        zIndexOffset: 150, title: EVENTO_CARGA[ev.tipo].nombre
+      }).bindPopup(popupEvento(ev)).addTo(capa);
+    });
+  }
+  // Estado de la carga (abierta/cerrada) y último contacto con los sensores.
+  function htmlEstadoCarga(s, enVivo) {
+    var c = s.carga || {};
+    var chip = c.estado === 'abierta' ? '<span class="chip chip-carga-abierta">Carga abierta</span>'
+             : c.estado === 'cerrada' ? '<span class="chip chip-carga-cerrada">Carga cerrada</span>'
+             : '<span class="chip chip-carga-nada">Sin datos de la carga</span>';
+    var contacto = '';
+    if (c.ultimo_contacto) {
+      contacto = enVivo && c.en_linea ? 'Sensores en línea · ' + horaDe(c.ultimo_contacto)
+               : 'Último contacto de los sensores: ' + horaDe(c.ultimo_contacto);
+    } else {
+      contacto = 'Los sensores no han reportado';
+    }
+    return '<div class="sensores-estado">' + chip + '<small>' + contacto + '</small></div>';
+  }
+  function htmlConteoEventos(s) {
+    var n = s.conteo || {};
+    return '<div class="conteo-eventos">' + ['frenada', 'hueco', 'curva', 'luz_abierta'].map(function (tipo) {
+      return '<span>' + letraEvento(tipo) + (n[tipo] || 0) + ' ' + EVENTO_CARGA[tipo].plural + '</span>';
+    }).join('') + '</div>';
+  }
+  // Sección completa (detalle del envío): estado, conteo y lista corta (los más recientes primero).
+  function htmlSensores(e, maximo) {
+    var s = sensoresDe(e);
+    if (!s) { return ''; }
+    var enVivo = e.estado === 'en_ruta' || e.estado === 'en_destino';
+    var recientes = s.eventos.slice(-(maximo || 8)).reverse();
+    var lista = recientes.map(function (ev) {
+      if (!EVENTO_CARGA[ev.tipo]) { return ''; }
+      var valor = textoValorEvento(ev), km = kmEvento(ev);
+      var conLugar = ev.lat !== null && ev.lat !== undefined;
+      return '<div class="evento-item' + (conLugar ? ' clicable" onclick="irAEvento(' + ev.lat + ',' + ev.lon + ')' : '') + '">' +
+        letraEvento(ev.tipo) + '<span>' + EVENTO_CARGA[ev.tipo].nombre + (valor ? ' <small>' + valor + '</small>' : '') + '</span>' +
+        '<small>' + (ev.momento ? horaDe(ev.momento) : '') + (km ? ' · ' + km : '') + '</small></div>';
+    }).join('');
+    var total = s.eventos.length;
+    return '<div class="sub-titulo">Sensores de la carga</div>' +
+      '<div class="caja-clara">' + htmlEstadoCarga(s, enVivo) + htmlConteoEventos(s) +
+      (lista ? '<div class="lista-eventos">' + lista + '</div>' +
+               (total > recientes.length ? '<small class="gris">Últimos ' + recientes.length + ' de ' + total + ' eventos (todos están en el mapa)</small>' : '')
+             : '<div class="nota-envio">Sin eventos de la carga todavía.</div>') +
+      '</div>';
+  }
+  // Línea corta para la tarjeta del viaje en Tiempo Real.
+  function htmlSensoresCorto(e) {
+    var s = sensoresDe(e);
+    if (!s) { return ''; }
+    var c = s.carga || {}, n = s.conteo || {};
+    if (!c.ultimo_contacto && !s.eventos.length) { return ''; }
+    return '<div class="viaje-linea">' +
+      (c.estado === 'abierta' ? '<span class="chip chip-carga-abierta">Carga abierta</span> '
+       : c.estado === 'cerrada' ? '<span class="chip chip-carga-cerrada">Carga cerrada</span> ' : '') +
+      letraEvento('frenada') + ' ' + (n.frenada || 0) + ' &nbsp;' + letraEvento('hueco') + ' ' + (n.hueco || 0) +
+      ' &nbsp;' + letraEvento('curva') + ' ' + (n.curva || 0) +
+      (c.ultimo_contacto ? ' <small class="gris">· sensores ' + (c.en_linea ? 'en línea' : horaDe(c.ultimo_contacto)) + '</small>' : '') +
+      '</div>';
+  }
+  // Tocar un evento de la lista lleva el mapa de la vista actual a ese punto.
+  function irAEvento(lat, lon) {
+    var m = modoActual === 'envios' ? mapaEnvios : (modoActual === 'historicos' ? mapaHistorico : mapa);
+    if (m) { m.setView([lat, lon], Math.max(m.getZoom(), 16)); }
+  }
+  // P3S3-FIN -------------------------------------------------------------
   function proximoPunto(e) {
     for (var i = 0; i < e.puntos_control.length; i++) {
       if (!e.puntos_control[i].hora_real) { return e.puntos_control[i]; }
@@ -3065,6 +3201,7 @@
         htmlAvance(e) +
       '</div>' +
       (e.alertas.length ? '<div class="sub-titulo">Alertas' + (activas ? ' activas: ' + activas : '') + '</div>' + htmlAlertas(e, true) : '') +
+      htmlSensores(e, 8) +
       '<div class="sub-titulo">Puntos de control</div>' +
       '<div class="caja-clara lista-puntos">' + htmlListaPuntos(e) + '</div>' +
       '<div class="sub-titulo">Datos del envío</div>' +
@@ -3099,6 +3236,7 @@
       limites.extend(plan.getBounds());
     }
     dibujarPuntos(capaEnvio, e.puntos_control);
+    dibujarEventos(capaEnvio, e);          // P3-S3
     e.alertas.forEach(function (a) {
       if (a.lat === null || a.lon === null) { return; }
       L.marker([a.lat, a.lon], { icon: L.divIcon({ className: 'marca-alerta', iconSize: [24, 24], iconAnchor: [12, 12], html: '<div>⚠</div>' }),
@@ -3459,8 +3597,8 @@
   // =====================================================================
   var envioVivo;                    // undefined = el servidor no manda envíos; null = recorrido sin envío
   var rutaVivo = { id: null, puntos: null };
-  var capaPlanVivo, capaPuntosVivo;
-  var firmaPuntosVivo = '', firmaTarjetaViaje = '';
+  var capaPlanVivo, capaPuntosVivo, capaEventosVivo;
+  var firmaPuntosVivo = '', firmaTarjetaViaje = '', firmaEventosVivo = '';
   var tarjetaViajePlegada = window.innerWidth <= 720;      // en celular empieza plegada
   var alertasAvisadas = {};         // alertas que ya se anunciaron con un aviso sobre el mapa
 
@@ -3468,6 +3606,7 @@
   mapa.getPane('planeada').style.zIndex = 390;
   capaPlanVivo = L.layerGroup().addTo(mapa);
   capaPuntosVivo = L.layerGroup().addTo(mapa);
+  capaEventosVivo = L.layerGroup().addTo(mapa);     // P3-S3: eventos de la carga
 
   function actualizarEnvioVivo(e) {
     envioVivo = e;
@@ -3475,7 +3614,17 @@
     if (!e) {
       tarjeta.hidden = true;
       if (rutaVivo.id !== null) { capaPlanVivo.clearLayers(); capaPuntosVivo.clearLayers(); rutaVivo = { id: null, puntos: null }; firmaPuntosVivo = ''; }
+      capaEventosVivo.clearLayers();
+      firmaEventosVivo = '';
       return;
+    }
+    // P3-S3: los eventos de la carga solo se redibujan si llegó alguno nuevo.
+    var sVivo = sensoresDe(e);
+    var firmaEv = e.id + ':' + (sVivo ? sVivo.eventos.map(function (x) { return x.id; }).join(',') : '');
+    if (firmaEv !== firmaEventosVivo) {
+      firmaEventosVivo = firmaEv;
+      capaEventosVivo.clearLayers();
+      dibujarEventos(capaEventosVivo, e);
     }
     if (rutaVivo.id !== e.id) {
       rutaVivo = { id: e.id, puntos: null };
@@ -3526,6 +3675,7 @@
         ? '<div class="viaje-linea">Próximo: <b>' + escaparHtml(siguiente.nombre) + '</b>' + (eta ? ' · ' + horaColombia(eta) : '') + '</div>' : '') +
       (p.llegada_real ? '<div class="viaje-linea">Llegó a las <b>' + horaDe(p.llegada_real) + '</b></div>'
         : (p.llegada_estimada ? '<div class="viaje-linea">Llegada estimada: <b>' + horaDe(p.llegada_estimada) + '</b></div>' : '')) +
+      htmlSensoresCorto(e) +
       htmlAlertas({ alertas: activas }, true) +
       '<button type="button" class="enlace-detalle" onclick="abrirEnvio(' + e.id + ')">Ver el envío completo →</button>';
   }
@@ -3575,13 +3725,16 @@
       var e = exigir(r, 'envio');
       if (e.ruta) { lineaPlaneada(capaPlanHist, e.ruta.puntos, 'planeada'); }
       dibujarPuntos(capaPlanHist, e.puntos_control);
+      dibujarEventos(capaPlanHist, e);       // P3-S3
       var pasados = e.puntos_control.filter(function (p) { return p.hora_real && p.tipo !== 'salida'; });
       var tarde = pasados.filter(function (p) { return p.nivel === 'aviso' || p.nivel === 'alerta'; }).length;
+      var sHist = sensoresDe(e);
       caja.innerHTML = '<span class="planilla-titulo">Envío</span>' +
         '<div class="envio-cabecera"><span class="envio-codigo">' + e.codigo + '</span>' + chipEstado(e.estado) + '</div>' +
         '<div class="envio-ruta">' + htmlRutaCorta(e.origen.direccion, e.destino.direccion) + '</div>' +
         '<div class="envio-meta"><span>Puntos: ' + pasados.length + ' de ' + (e.puntos_control.length - 1) + (tarde ? ' (' + tarde + ' con retraso)' : '') + '</span>' +
         '<span>Alertas: ' + e.alertas.length + '</span></div>' +
+        (sHist && sHist.eventos.length ? htmlConteoEventos(sHist) : '') +
         '<div class="leyenda-planeada"><i></i>Ruta planeada · los círculos son los puntos de control</div>' +
         '<button type="button" class="enlace-detalle" onclick="abrirEnvio(' + e.id + ')">Ver el envío →</button>';
     }).catch(function (err) { console.error(err); });

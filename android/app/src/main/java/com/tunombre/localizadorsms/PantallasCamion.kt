@@ -707,6 +707,7 @@ class AccionesCamion(
     val onTransmitirSinViaje: () -> Unit,
     val onActualizar: () -> Unit,
     val onCambiarPc: () -> Unit,
+    val onCambiarSensores: () -> Unit,     // P3-S3: elegir el ESP32 de sensores de la carga
     val onCerrarSesion: () -> Unit,
     val onCerrarAviso: () -> Unit,
     val onLlamar: (String) -> Unit
@@ -725,6 +726,7 @@ fun PantallaCamion(
     cambiandoDisponibilidad: Boolean,
     finalizando: Boolean,
     pcNombre: String?,
+    sensoresNombre: String?,
     acciones: AccionesCamion
 ) {
     val transmitiendoEste = viaje != null && EstadoTransmision.activa && EstadoTransmision.envioId == viaje.id
@@ -742,9 +744,11 @@ fun PantallaCamion(
             when {
                 viaje == null -> ContenidoEspera(camion, aviso, avisoEsError, cambiandoDisponibilidad, acciones)
                 enCurso -> ContenidoEnViaje(
-                    viaje, rutaJson, posicionTelefono, fase, aviso, avisoEsError, finalizando, pcNombre, acciones
+                    viaje, rutaJson, posicionTelefono, fase, aviso, avisoEsError, finalizando, pcNombre, sensoresNombre, acciones
                 )
-                else -> ContenidoViajeAsignado(viaje, rutaJson, posicionTelefono, fase, aviso, avisoEsError, pcNombre, acciones)
+                else -> ContenidoViajeAsignado(
+                    viaje, rutaJson, posicionTelefono, fase, aviso, avisoEsError, pcNombre, sensoresNombre, acciones
+                )
             }
         }
     }
@@ -779,8 +783,12 @@ private fun BarraCamion(camion: Camion, sinConexion: Boolean, acciones: Acciones
                         onClick = { menu = false; acciones.onActualizar() }
                     )
                     DropdownMenuItem(
-                        text = { Text("Computador de reconocimiento", fontFamily = Manrope, fontWeight = FontWeight.SemiBold) },
+                        text = { Text("Equipo de reconocimiento", fontFamily = Manrope, fontWeight = FontWeight.SemiBold) },
                         onClick = { menu = false; acciones.onCambiarPc() }
+                    )
+                    DropdownMenuItem(
+                        text = { Text("Sensores de la carga", fontFamily = Manrope, fontWeight = FontWeight.SemiBold) },
+                        onClick = { menu = false; acciones.onCambiarSensores() }
                     )
                     DropdownMenuItem(
                         text = { Text("Cerrar sesión", fontFamily = Manrope, fontWeight = FontWeight.SemiBold) },
@@ -968,6 +976,7 @@ private fun ContenidoViajeAsignado(
     aviso: String?,
     avisoEsError: Boolean,
     pcNombre: String?,
+    sensoresNombre: String?,
     acciones: AccionesCamion
 ) {
     val viajeJson = remember(viaje) { viaje.json.toString() }
@@ -1002,10 +1011,11 @@ private fun ContenidoViajeAsignado(
         ZonaDeInicio(
             fase = fase,
             titulo = "Iniciar viaje",
-            subtitulo = "Toca el botón: primero se verifica al conductor con la cámara del computador",
+            subtitulo = "Toca el botón: primero se verifica al conductor con la cámara del equipo de reconocimiento",
             pcNombre = pcNombre,
             acciones = acciones
         )
+        LineaSensores(sensoresNombre, acciones.onCambiarSensores)
 
         TarjetaParada(
             etiqueta = "Recoger en",
@@ -1070,12 +1080,12 @@ private fun ZonaDeInicio(
                 onSinVerificar = acciones.onSinVerificar
             )
             is FaseVerificacion.EnCurso -> TextoSuave(
-                "La cámara del computador debe ver tu cara de frente y con buena luz. Toca el botón para cancelar.",
+                "La cámara del equipo de reconocimiento debe ver tu cara de frente y con buena luz. Toca el botón para cancelar.",
                 tamano = 12.sp,
                 centrado = true
             )
             else -> Text(
-                text = "Computador de reconocimiento: ${pcNombre ?: "sin elegir"}  ·  Cambiar",
+                text = "Equipo de reconocimiento (computador o ESP32-CAM): ${pcNombre ?: "sin elegir"}  ·  Cambiar",
                 fontFamily = Manrope,
                 fontWeight = FontWeight.SemiBold,
                 fontSize = 12.sp,
@@ -1159,6 +1169,7 @@ private fun ContenidoEnViaje(
     avisoEsError: Boolean,
     finalizando: Boolean,
     pcNombre: String?,
+    sensoresNombre: String?,
     acciones: AccionesCamion
 ) {
     val transmitiendo = EstadoTransmision.activa && EstadoTransmision.envioId == viaje.id
@@ -1193,6 +1204,18 @@ private fun ContenidoEnViaje(
         TextoFuerte("${viaje.origenDireccion} → ${viaje.destinoDireccion}", tamano = 17.sp)
 
         if (aviso != null) TarjetaAviso(aviso, avisoEsError, acciones.onCerrarAviso)
+
+        // P3-S3: carga abierta en plena ruta (lo dice el ESP en vivo o la alerta del servidor).
+        val sensoresEnVivo = transmitiendo && EstadoSensores.activo && EstadoSensores.envioId == viaje.id
+        val cargaAbiertaEnRuta = viaje.estado == "en_ruta" &&
+                (viaje.cargaAbiertaActiva != null || (sensoresEnVivo && EstadoSensores.luzAbierta == true))
+        if (cargaAbiertaEnRuta) {
+            TarjetaEstado(
+                RojoAlerta, "Carga abierta en plena ruta",
+                "El sensor de luz detecta la carga abierta. Ciérrala: solo se abre en el cargue y en la entrega. " +
+                        "La empresa ya recibió la alerta."
+            )
+        }
 
         // Avisos del seguimiento
         val desvio = viaje.desvioActivo
@@ -1285,6 +1308,8 @@ private fun ContenidoEnViaje(
             }
         }
 
+        TarjetaSensores(viaje, sensoresNombre, sensoresEnVivo, acciones.onCambiarSensores)
+
         TarjetaOrbita {
             Etiqueta("Puntos de control")
             Spacer(modifier = Modifier.height(6.dp))
@@ -1347,6 +1372,111 @@ private fun ContenidoEnViaje(
             onConfirmar = { confirmarDetener = false; acciones.onDetener() },
             onCancelar = { confirmarDetener = false }
         )
+    }
+}
+
+// ---------------------------------------------------------------
+//  P3-S3 · Sensores de la carga
+// ---------------------------------------------------------------
+/** Línea "Sensores de la carga: X · Cambiar" (antes de salir). */
+@Composable
+private fun LineaSensores(sensoresNombre: String?, onCambiar: () -> Unit) {
+    Text(
+        text = "Sensores de la carga: ${sensoresNombre ?: "sin elegir (opcional)"}  ·  Cambiar",
+        fontFamily = Manrope,
+        fontWeight = FontWeight.SemiBold,
+        fontSize = 12.sp,
+        color = CianMarca,
+        textAlign = TextAlign.Center,
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(8.dp))
+            .clickable(onClick = onCambiar)
+            .padding(horizontal = 8.dp, vertical = 6.dp)
+    )
+}
+
+/**
+ * Estado de los sensores en pleno viaje: conexión con el ESP (y hace cuánto habló), carga abierta o
+ * cerrada, y cuántas frenadas, huecos y curvas lleva. Los contadores toman el mayor entre lo que vio
+ * este celular y lo que tiene el servidor (el servidor incluye lo de antes de una reconexión).
+ */
+@Composable
+private fun TarjetaSensores(viaje: Viaje, sensoresNombre: String?, enVivo: Boolean, onCambiar: () -> Unit) {
+    // Reloj para el "hace X s" del último latido.
+    var ahora by remember { mutableLongStateOf(System.currentTimeMillis()) }
+    LaunchedEffect(Unit) {
+        while (true) {
+            kotlinx.coroutines.delay(1_000L)
+            ahora = System.currentTimeMillis()
+        }
+    }
+    val servidor = viaje.sensores
+    val conectado = enVivo && EstadoSensores.conectado
+    val latidoReciente = conectado && EstadoSensores.ultimoLatidoMs > 0 && ahora - EstadoSensores.ultimoLatidoMs <= 35_000L
+    val (colorConexion, textoConexion) = when {
+        sensoresNombre == null -> GrisAzul to "Sin sensores elegidos: el viaje sigue solo con el GPS"
+        !enVivo && servidor?.enLinea == true -> VerdeOk to "En línea (según el servidor)"
+        !enVivo -> GrisAzul to "Se conectan cuando la transmisión del viaje está activa"
+        latidoReciente -> VerdeOk to "Conectados · último latido ${textoHace(EstadoSensores.ultimoLatidoMs, ahora)}"
+        conectado -> Ambar to "Conectados, sin latido ${textoHace(EstadoSensores.ultimoLatidoMs, ahora)}"
+        else -> NaranjaMarca to EstadoSensores.mensaje.ifEmpty { "Conectando con los sensores…" }
+    }
+    val luzAbierta: Boolean? = if (enVivo && EstadoSensores.luzAbierta != null) EstadoSensores.luzAbierta
+    else when (servidor?.cargaEstado) { "abierta" -> true; "cerrada" -> false; else -> null }
+
+    TarjetaOrbita(borde = if (luzAbierta == true && viaje.estado == "en_ruta") RojoAlerta else colorConexion) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Etiqueta("Sensores de la carga", modifier = Modifier.weight(1f))
+            Text(
+                "Cambiar",
+                fontFamily = Manrope,
+                fontWeight = FontWeight.ExtraBold,
+                fontSize = 12.sp,
+                color = CianMarca,
+                modifier = Modifier
+                    .clip(RoundedCornerShape(8.dp))
+                    .clickable(onClick = onCambiar)
+                    .padding(horizontal = 6.dp, vertical = 2.dp)
+            )
+        }
+        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 6.dp)) {
+            Box(
+                modifier = Modifier
+                    .size(10.dp)
+                    .clip(CircleShape)
+                    .background(colorConexion)
+            )
+            Spacer(modifier = Modifier.width(8.dp))
+            TextoSuave(
+                (sensoresNombre?.let { "$it · " } ?: "") + textoConexion,
+                tamano = 13.sp,
+                color = Claro,
+                modifier = Modifier.weight(1f)
+            )
+        }
+        Spacer(modifier = Modifier.height(10.dp))
+        Row {
+            Dato(
+                "CARGA",
+                when (luzAbierta) { true -> "Abierta"; false -> "Cerrada"; null -> "—" },
+                modifier = Modifier.weight(1f)
+            )
+            Dato("FRENADAS", maxOf(EstadoSensores.frenadas.takeIf { enVivo } ?: 0, servidor?.frenadas ?: 0).toString(),
+                modifier = Modifier.weight(1f))
+            Dato("HUECOS", maxOf(EstadoSensores.huecos.takeIf { enVivo } ?: 0, servidor?.huecos ?: 0).toString(),
+                modifier = Modifier.weight(1f))
+            Dato("CURVAS", maxOf(EstadoSensores.curvas.takeIf { enVivo } ?: 0, servidor?.curvas ?: 0).toString(),
+                modifier = Modifier.weight(1f))
+        }
+        if (EstadoSensores.pendientes > 0) {
+            TextoSuave(
+                "${EstadoSensores.pendientes} evento(s) esperando señal para subir al servidor",
+                tamano = 12.sp,
+                color = Ambar,
+                modifier = Modifier.padding(top = 8.dp)
+            )
+        }
     }
 }
 

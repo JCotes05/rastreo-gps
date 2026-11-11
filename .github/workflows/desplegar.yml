@@ -40,7 +40,7 @@ jobs:
           ssh -i ~/.ssh/clave.pem ubuntu@${{ secrets.VALENTINA_IP }} "mkdir -p ~/despliegue"
           scp -i ~/.ssh/clave.pem \
             servidor/basedatos.py servidor/listener.py servidor/servidor_web.py \
-            servidor/rutas.py servidor/api_envios.py servidor/monitoreo.py \
+            servidor/rutas.py servidor/api_envios.py servidor/monitoreo.py servidor/eventos_carga.py \
             web/index.html nginx/valentina.conf \
             ubuntu@${{ secrets.VALENTINA_IP }}:~/despliegue/
 
@@ -53,6 +53,7 @@ jobs:
             sudo cp ~/despliegue/rutas.py ~/rutas.py
             sudo cp ~/despliegue/api_envios.py ~/api_envios.py
             sudo cp ~/despliegue/monitoreo.py ~/monitoreo.py
+            sudo cp ~/despliegue/eventos_carga.py ~/eventos_carga.py
             sudo cp ~/despliegue/index.html /var/www/rastreo/index.html
             sudo cp ~/despliegue/valentina.conf /etc/nginx/sites-available/default
             sudo rm -f /etc/nginx/sites-enabled/default
@@ -84,7 +85,7 @@ jobs:
           ssh -i ~/.ssh/clave.pem ubuntu@${{ secrets.JESUS_IP }} "mkdir -p ~/despliegue"
           scp -i ~/.ssh/clave.pem \
             servidor/basedatos.py servidor/listener.py servidor/servidor_web.py \
-            servidor/rutas.py servidor/api_envios.py servidor/monitoreo.py \
+            servidor/rutas.py servidor/api_envios.py servidor/monitoreo.py servidor/eventos_carga.py \
             web/index.html nginx/jesus.conf \
             ubuntu@${{ secrets.JESUS_IP }}:~/despliegue/
 
@@ -97,6 +98,7 @@ jobs:
             sudo cp ~/despliegue/rutas.py ~/rutas.py
             sudo cp ~/despliegue/api_envios.py ~/api_envios.py
             sudo cp ~/despliegue/monitoreo.py ~/monitoreo.py
+            sudo cp ~/despliegue/eventos_carga.py ~/eventos_carga.py
             sudo cp ~/despliegue/index.html /var/www/rastreo/index.html
             sudo cp ~/despliegue/jesus.conf /etc/nginx/sites-available/default
             sudo rm -f /etc/nginx/sites-enabled/default
@@ -128,7 +130,7 @@ jobs:
           ssh -i ~/.ssh/clave.pem ec2-user@${{ secrets.ADRIAN_IP }} "mkdir -p ~/despliegue"
           scp -i ~/.ssh/clave.pem \
             servidor/basedatos.py servidor/listener.py servidor/servidor_web.py \
-            servidor/rutas.py servidor/api_envios.py servidor/monitoreo.py \
+            servidor/rutas.py servidor/api_envios.py servidor/monitoreo.py servidor/eventos_carga.py \
             web/index.html nginx/adrian.conf \
             ec2-user@${{ secrets.ADRIAN_IP }}:~/despliegue/
 
@@ -141,6 +143,7 @@ jobs:
             sudo cp ~/despliegue/rutas.py ~/rutas.py
             sudo cp ~/despliegue/api_envios.py ~/api_envios.py
             sudo cp ~/despliegue/monitoreo.py ~/monitoreo.py
+            sudo cp ~/despliegue/eventos_carga.py ~/eventos_carga.py
             sudo cp ~/despliegue/index.html /var/www/rastreo/index.html
             sudo cp ~/despliegue/adrian.conf /etc/nginx/nginx.conf
             sudo nginx -t
