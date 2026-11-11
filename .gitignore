@@ -23,3 +23,6 @@ __pycache__/
 
 # Llaves SSH: nunca al repositorio
 *.pem
+
+# Compilaciones de Arduino
+firmware/**/build/
