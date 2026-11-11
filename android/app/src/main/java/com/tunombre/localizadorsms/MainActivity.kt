@@ -308,10 +308,10 @@ class MainActivity : ComponentActivity() {
             SelectorDeComputador(
                 equipos = equiposVinculados,
                 titulo = "Sensores de la carga",
-                ayuda = "Elige el ESP32 de sensores (por ejemplo \"Orbita-Sensores\"). Se conecta solo al iniciar " +
+                ayuda = "Elige el ESP32 de sensores (por ejemplo \"ORBITA-SENSORES\"). Se conecta solo al iniciar " +
                         "un viaje. Sin sensores, el viaje funciona igual.",
                 sinEquipos = "No hay equipos vinculados. En los ajustes de Bluetooth del celular, vincula el ESP32 " +
-                        "de sensores (\"Orbita-Sensores\") y vuelve a intentarlo.",
+                        "de sensores (\"ORBITA-SENSORES\") y vuelve a intentarlo.",
                 textoQuitar = if (sensoresElegido != null) "No usar sensores" else null,
                 onQuitar = { elegirSensores(null) },
                 onElegir = { elegirSensores(it) },
