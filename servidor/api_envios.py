@@ -30,6 +30,7 @@ Para la PÁGINA:
   GET  /api/envios/<id>               detalle (?ruta=0 para no traer la línea)
   POST /api/envios/<id>/cancelar      solo si el camión todavía no ha salido
   POST /api/alertas/<id>/vista        marca una alerta como vista
+  GET  /api/planillas/<id_recorrido>/foto   P3-S3: foto con la que se reconoció al conductor (7 días)
 
 Para el resto de servidor_web.py:
   resumen_envio_de_recorrido(id_recorrido)  -> clave "envio" de /datos
@@ -736,6 +737,21 @@ def identificar_conductor(p):
     return 200, resultado
 
 
+def foto_de_planilla(p):
+    """
+    P3-S3. Foto con la que el ESP32-CAM verificó al conductor de un recorrido (la que reconoció
+    el servidor). La muestra la planilla de la página. 404 si no hay o ya pasaron 7 días.
+    """
+    with _bd() as cur:
+        try:
+            foto = reconocimiento_facial.foto_de_planilla(cur, p.args[0])
+        except (psycopg2.errors.UndefinedTable, psycopg2.errors.UndefinedColumn):
+            foto = None
+    if foto is None:
+        raise ErrorAPI(404, "Este recorrido no tiene foto del conductor (o ya pasaron 7 días).")
+    return 200, foto
+
+
 # ---------------------------------------------------------------------
 # PÁGINA: catálogo, flota y envíos
 # ---------------------------------------------------------------------
@@ -1009,6 +1025,7 @@ _RUTAS = [
     ("GET",  r"/api/envios/(\d{1,9})", detalle_envio),
     ("POST", r"/api/envios/(\d{1,9})/cancelar", cancelar_envio),
     ("POST", r"/api/alertas/(\d{1,9})/vista", marcar_alerta_vista),
+    ("GET",  r"/api/planillas/(\d{1,20})/foto", foto_de_planilla),          # P3-S3
 ]
 
 

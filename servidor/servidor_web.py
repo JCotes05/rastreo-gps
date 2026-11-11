@@ -96,7 +96,8 @@ def _consultar_planillas(ids):
         finally:
             cursor.close()
         return {
-            id_rec: {"cedula": cedula, "nombre": nombre, "celular": celular, "verificado": verificado}
+            id_rec: {"cedula": cedula, "nombre": nombre, "celular": celular, "verificado": verificado,
+                     "id_recorrido": id_rec}   # P3-S3: la página pide con él la foto del conductor
             for id_rec, cedula, nombre, celular, verificado in filas
         }
     except Exception as error:

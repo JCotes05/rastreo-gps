@@ -451,6 +451,14 @@
   .planilla-verificado svg { flex: none; }
   .planilla-verificado small { display: block; margin-top: 1px; font-size: 11.5px; font-weight: 600; color: var(--medio); }
   .planilla-vacia { font-size: 12.5px; font-weight: 600; line-height: 1.45; color: var(--medio); }
+  /* P3-S3: foto con la que el ESP32-CAM verificó al conductor (se guarda 7 días) */
+  .planilla-foto { display: flex; align-items: center; gap: 10px; margin-top: 8px; padding: 7px; border-radius: 10px;
+    background: rgba(11, 31, 58, 0.06); }
+  .planilla-foto[hidden] { display: none; }
+  .planilla-foto img { width: 76px; height: 76px; flex: none; border-radius: 8px; object-fit: cover;
+    border: 2px solid rgba(15, 118, 110, 0.55); background: #d9dee5; }
+  .planilla-foto b { display: block; font-size: 12.5px; font-weight: 800; }
+  .planilla-foto small { display: block; margin-top: 2px; font-size: 11.5px; font-weight: 600; line-height: 1.35; color: var(--medio); }
   .planilla-vacia b { display: block; margin-bottom: 3px; font-size: 15px; font-weight: 800; color: var(--oscuro); }
   /* Históricos: conductor en la tarjeta de la lista y planilla en el detalle */
   .tarjeta-conductor { display: flex; align-items: center; gap: 6px; min-width: 0; margin-top: 5px; font-size: 12.5px; font-weight: 800; }
@@ -1177,7 +1185,43 @@
       '<div class="planilla-fila"><span class="planilla-etq">Cédula</span><span class="planilla-val">' + escaparHtml(formatearCedula(p.cedula)) + '</span></div>' +
       '<div class="planilla-fila"><span class="planilla-etq">Celular</span><span class="planilla-val">' + escaparHtml(formatearCelular(p.celular)) + '</span></div>' +
       '<div class="planilla-verificado">' + SVG_VERIFICADO + '<span>Verificado con reconocimiento facial' +
-      (p.verificado ? '<small>' + escaparHtml(textoVerificado(p.verificado)) + '</small>' : '') + '</span></div>';
+      (p.verificado ? '<small>' + escaparHtml(textoVerificado(p.verificado)) + '</small>' : '') + '</span></div>' +
+      (p.id_recorrido ? '<div class="planilla-foto" data-foto-recorrido="' + escaparHtml(p.id_recorrido) + '" hidden></div>' : '');
+  }
+
+  // ---- P3-S3: foto del conductor tomada por el ESP32-CAM al empezar el viaje ----
+  // Se pide aparte (GET /api/planillas/<id>/foto) y una sola vez por recorrido; si no hay foto
+  // (verificado con el computador de P3-S1, o ya pasaron 7 días) el bloque queda oculto.
+  var fotosPlanilla = {};           // id_recorrido -> {datos | null, pedida_ms}
+  function htmlFotoPlanilla(f) {
+    var partes = String(f.tomada || '').split(' ');
+    return '<img src="' + f.foto + '" alt="Foto del conductor tomada por el ESP32-CAM de la cabina">' +
+      '<div><b>Foto tomada en vivo</b><small>ESP32-CAM de la cabina · ' + escaparHtml(etiquetaDia(partes[0]) + ' ' + (partes[1] || '')) +
+      '<br>Similitud ' + escaparHtml(Number(f.similitud).toFixed(2)) + ' · se borra a los ' + escaparHtml(String(f.dias_guardada || 7)) + ' días</small></div>';
+  }
+  function cargarFotosPlanilla(contenedor) {
+    var bloques = contenedor.querySelectorAll('[data-foto-recorrido]');
+    Array.prototype.forEach.call(bloques, function (bloque) {
+      var id = bloque.getAttribute('data-foto-recorrido');
+      var guardada = fotosPlanilla[id];
+      var mostrar = function (f) {
+        if (!f || !/^data:image\/jpeg;base64,[A-Za-z0-9+\/=]+$/.test(f.foto)) { bloque.hidden = true; return; }
+        bloque.innerHTML = htmlFotoPlanilla(f);
+        bloque.hidden = false;
+      };
+      // Sin foto todavía: se vuelve a preguntar después de 1 min (puede llegar un poco después).
+      if (guardada && (guardada.datos || Date.now() - guardada.pedida_ms < 60000)) {
+        if (guardada.promesa) { guardada.promesa.then(function () { mostrar(fotosPlanilla[id].datos); }); }
+        else { mostrar(guardada.datos); }
+        return;
+      }
+      var registro = { datos: null, pedida_ms: Date.now() };
+      registro.promesa = fetch('/api/planillas/' + encodeURIComponent(id) + '/foto')
+        .then(function (r) { return r.ok ? r.json() : null; })
+        .catch(function () { return null; })
+        .then(function (datos) { registro.datos = datos; registro.promesa = null; mostrar(datos); });
+      fotosPlanilla[id] = registro;
+    });
   }
   // Tarjeta flotante de Tiempo Real.  undefined = el servidor todavía no envía planillas.
   function htmlPlanillaVivo(p) {
@@ -1289,6 +1333,7 @@
     if (html !== htmlPlanillaMostrado) {       // solo se toca la página si algo cambió
       porId('planilla-contenido').innerHTML = html;
       htmlPlanillaMostrado = html;
+      cargarFotosPlanilla(porId('planilla-contenido'));   // P3-S3
     }
   }
   function marcarCamion(seleccionado) {
@@ -2406,6 +2451,7 @@
     porId('detalle-hasta').textContent = fechaCorta(r.hora_recepcion_fin);
     porId('detalle-datos').innerHTML = htmlDatosRuta(r);
     porId('detalle-planilla').innerHTML = htmlPlanillaDetalle(r.planilla);
+    cargarFotosPlanilla(porId('detalle-planilla'));     // P3-S3
   }
 
   function dibujarDetalle(puntos, color) {
