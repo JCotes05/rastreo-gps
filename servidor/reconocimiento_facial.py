@@ -20,7 +20,9 @@ Reglas contra falsos positivos (las de comun.py, P3-S1):
     y sacarle MARGEN (0.10) al segundo;
   - TODOS los recortes con rostro (mínimo 2) deben aceptar a la MISMA persona;
   - tras 2 no reconocidos seguidos, el camión espera 30 s (insistir no sirve).
-Cada intento queda en la tabla identificaciones (evidencia para el informe; sin imágenes).
+Cada intento queda en la tabla identificaciones (evidencia para el informe). Si se reconoce al
+conductor, se guarda también el recorte más parecido: la página lo muestra en la planilla del
+recorrido como prueba de que la foto se tomó en vivo. Las fotos se vacían a los DIAS_FOTO (7) días.
 
 Necesita numpy y OpenCV (cv2) y los modelos .onnx en ~/modelos (o en MODELOS_ROSTROS).
 Si faltan, la API responde 503 y el resto del servidor sigue funcionando igual: solo la
@@ -61,6 +63,7 @@ FALLOS_ANTES_DE_ESPERA = 2
 SEGUNDOS_DE_ESPERA = 30
 SEGUNDOS_CACHE_BASE = 60        # las huellas se releen de la base cada minuto
 MAX_MUESTRAS = 50
+DIAS_FOTO = 7                   # la foto del conductor reconocido se muestra en la planilla solo estos días
 
 PATRON_CEDULA = re.compile(r"^[0-9]{5,15}$")
 
@@ -288,17 +291,56 @@ def decidir(base, jpgs):
 
 
 def identificar(cur, placa, jpgs):
-    """Decide, cuenta los fallos del camión y deja el intento en la tabla identificaciones."""
+    """Decide, cuenta los fallos del camión y deja el intento en la tabla identificaciones.
+    Si reconoce al conductor, guarda también el recorte más parecido (la foto que muestra la
+    planilla de la página, para probar que se tomó en vivo al empezar el viaje)."""
+    import psycopg2.errors
     _revisar_espera(placa)
     base = _base(cur)
     r = decidir(base, jpgs)
     _anotar(placa, r["estado"] == "reconocido")
-    cur.execute("""INSERT INTO identificaciones (placa, resultado, cedula, similitud, rostros, con_rostro, motivo)
-                   VALUES (%s, %s, %s, %s, %s, %s, %s)""",
-                (placa, r["estado"], r.get("cedula"), r["similitud"], r["rostros"], r["con_rostro"], r.get("motivo")))
+    foto = None
+    if r["estado"] == "reconocido":
+        foto = jpgs[max(range(len(jpgs)), key=lambda i: r["similitudes"][i])]
+    datos = (placa, r["estado"], r.get("cedula"), r["similitud"], r["rostros"], r["con_rostro"], r.get("motivo"))
+    # La columna foto llega con sql/p3s3_foto.sql; si todavía no existe, se guarda el intento sin ella.
+    cur.execute("SAVEPOINT con_foto")
+    try:
+        cur.execute("""INSERT INTO identificaciones (placa, resultado, cedula, similitud, rostros, con_rostro, motivo, foto)
+                       VALUES (%s, %s, %s, %s, %s, %s, %s, %s)""", datos + (foto,))
+        # Las fotos se guardan DIAS_FOTO días: después se vacían (app_rastreo no puede borrar filas).
+        cur.execute("""UPDATE identificaciones SET foto = NULL
+                       WHERE foto IS NOT NULL AND momento < now() - make_interval(days => %s)""", (DIAS_FOTO,))
+        cur.execute("RELEASE SAVEPOINT con_foto")
+    except psycopg2.errors.UndefinedColumn:
+        cur.execute("ROLLBACK TO SAVEPOINT con_foto")
+        cur.execute("""INSERT INTO identificaciones (placa, resultado, cedula, similitud, rostros, con_rostro, motivo)
+                       VALUES (%s, %s, %s, %s, %s, %s, %s)""", datos)
     print(f"[ROSTRO] {placa}: {r['estado']} {r.get('cedula') or ''} sim={r['similitud']} "
           f"({r['con_rostro']}/{r['rostros']} con rostro, {r['similitudes']})", flush=True)
     return r
+
+
+def foto_de_planilla(cur, id_recorrido):
+    """Foto con la que se verificó al conductor de un recorrido: el intento reconocido de esa
+    cédula justo antes de crearse la planilla (la app empieza a transmitir apenas lo reconoce).
+    Devuelve {"foto": data URI, "tomada": "YYYY-MM-DD HH:MM:SS", "similitud"} o None si no hay
+    (recorrido verificado con el computador de P3-S1, o ya pasaron DIAS_FOTO días)."""
+    cur.execute("""SELECT i.foto,
+                          to_char(i.momento AT TIME ZONE 'America/Bogota', 'YYYY-MM-DD HH24:MI:SS') AS tomada,
+                          i.similitud
+                   FROM planillas p
+                   JOIN identificaciones i ON i.cedula = p.cedula AND i.resultado = 'reconocido'
+                        AND i.foto IS NOT NULL
+                        AND i.momento BETWEEN p.verificado_en - interval '3 minutes' AND p.verificado_en + interval '1 minute'
+                   WHERE p.id_recorrido = %s AND i.momento > now() - make_interval(days => %s)
+                   ORDER BY i.momento DESC LIMIT 1""", (id_recorrido, DIAS_FOTO))
+    fila = cur.fetchone()
+    if fila is None:
+        return None
+    foto, tomada, similitud = (fila["foto"], fila["tomada"], fila["similitud"]) if isinstance(fila, dict) else fila
+    return {"foto": "data:image/jpeg;base64," + base64.b64encode(bytes(foto)).decode("ascii"),
+            "tomada": tomada, "similitud": round(float(similitud), 2), "dias_guardada": DIAS_FOTO}
 
 
 # ---------------------------------------------------------------------

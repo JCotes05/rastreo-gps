@@ -39,6 +39,8 @@
 #include "esp_camera.h"
 #include "img_converters.h"
 #include "mbedtls/base64.h"
+#include "esp_gap_bt_api.h"
+#include "esp_bt_device.h"
 #include "human_face_detect_msr01.hpp"
 #include "human_face_detect_mnp01.hpp"
 
@@ -266,11 +268,30 @@ void foto(Stream &canal) {                  // solo por el cable
   free(jpg);
 }
 
+// Algunos celulares (HyperOS de Xiaomi/Poco) no muestran equipos Bluetooth que no dicen
+// qué son. Se declara como "cámara" (clase Imaging) y se fuerza el modo visible y conectable.
+void hacer_visible() {
+  esp_bt_cod_t clase = {};
+  clase.major = ESP_BT_COD_MAJOR_DEV_IMAGING;
+  clase.minor = 0x08;                         // Imaging > cámara
+  clase.service = ESP_BT_COD_SRVC_CAPTURING;  // servicio de captura de imágenes
+  esp_bt_gap_set_cod(clase, ESP_BT_SET_COD_ALL);
+  esp_bt_gap_set_scan_mode(ESP_BT_CONNECTABLE, ESP_BT_GENERAL_DISCOVERABLE);
+}
+
+String direccion_bt() {
+  const uint8_t *d = esp_bt_dev_get_address();
+  if (!d) return "?";
+  char t[18];
+  snprintf(t, sizeof t, "%02X:%02X:%02X:%02X:%02X:%02X", d[0], d[1], d[2], d[3], d[4], d[5]);
+  return t;
+}
+
 void estado(Stream &canal) {
-  char t[160];
-  snprintf(t, sizeof t, "ESTADO;CAMARA:%s;SENSOR:0x%x;RAM_LIBRE:%u;PSRAM_LIBRE:%u;BT:%s;VER:2",
+  char t[200];
+  snprintf(t, sizeof t, "ESTADO;CAMARA:%s;SENSOR:0x%x;RAM_LIBRE:%u;PSRAM_LIBRE:%u;BT:%s;MAC:%s;VER:2",
            camara_ok ? "OK" : "ERROR", camara_ok ? esp_camera_sensor_get()->id.PID : 0,
-           ESP.getFreeHeap(), ESP.getFreePsram(), NOMBRE_BT);
+           ESP.getFreeHeap(), ESP.getFreePsram(), NOMBRE_BT, direccion_bt().c_str());
   enviar(canal, t);
 }
 
@@ -323,6 +344,7 @@ void setup() {
   Serial.println("\nOrbita - equipo de reconocimiento de la cabina (ESP32-CAM, P3-S3)");
   camara_ok = iniciar_camara();
   if (!SerialBT.begin(NOMBRE_BT)) Serial.println("ERROR: no inicio el Bluetooth");
+  hacer_visible();
   Serial.printf("Bluetooth listo: \"%s\". RAM libre %u, PSRAM libre %u\n", NOMBRE_BT, ESP.getFreeHeap(), ESP.getFreePsram());
   Serial.println("Comandos: PING, IDENTIFICAR, ESTADO; por cable: CAPTURAR;N:8, PROBAR, FOTO");
 }
