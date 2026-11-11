@@ -7,7 +7,11 @@ import android.bluetooth.BluetoothManager
 import android.bluetooth.BluetoothSocket
 import android.content.Context
 import android.content.pm.PackageManager
+import android.graphics.BitmapFactory
 import android.os.Build
+import android.util.Base64
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.core.content.ContextCompat
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.coroutineScope
@@ -44,6 +48,13 @@ sealed class ResultadoVerificacion {
     data class NoReconocido(val similitud: Float, val motivo: String? = null) : ResultadoVerificacion()
     data class Fallo(val mensaje: String) : ResultadoVerificacion()
 }
+
+/**
+ * P3-S3: vista previa que manda el ESP32-CAM mientras identifica (~3 por segundo), para que el
+ * conductor vea en el celular dónde apunta la cámara. caja = [x1, y1, x2, y2] del rostro en la
+ * imagen (null si no ve ninguno); sirve = el rostro está lo bastante cerca para reconocerlo.
+ */
+class VistaPrevia(val imagen: ImageBitmap, val ancho: Int, val alto: Int, val caja: List<Int>?, val sirve: Boolean)
 
 /** Un equipo Bluetooth vinculado al celular (para elegir el computador). */
 data class EquipoBluetooth(val nombre: String, val direccion: String)
@@ -130,7 +141,8 @@ object VerificacionConductor {
     suspend fun identificar(
         contexto: Context,
         direccion: String,
-        onAvance: (String) -> Unit
+        onAvance: (String) -> Unit,
+        onVista: (VistaPrevia) -> Unit = {}
     ): ResultadoVerificacion {
         if (!tienePermiso(contexto)) return ResultadoVerificacion.Fallo("Falta el permiso de Bluetooth.")
         val adaptador = adaptador(contexto) ?: return ResultadoVerificacion.Fallo("Este celular no tiene Bluetooth.")
@@ -150,7 +162,7 @@ object VerificacionConductor {
                 cancelar()
             }
             try {
-                withContext(Dispatchers.IO) { conversar(contexto, equipo, onAvance) }
+                withContext(Dispatchers.IO) { conversar(contexto, equipo, onAvance, onVista) }
             } catch (e: IOException) {
                 if (tiempoAgotado) {
                     ResultadoVerificacion.Fallo("El equipo de reconocimiento no respondió a tiempo.")
@@ -170,7 +182,12 @@ object VerificacionConductor {
     }
 
     // Conversación completa con el computador (corre en segundo plano).
-    private suspend fun conversar(contexto: Context, equipo: BluetoothDevice, onAvance: (String) -> Unit): ResultadoVerificacion {
+    private suspend fun conversar(
+        contexto: Context,
+        equipo: BluetoothDevice,
+        onAvance: (String) -> Unit,
+        onVista: (VistaPrevia) -> Unit
+    ): ResultadoVerificacion {
         val socket = conectar(equipo)
         val salida = socket.outputStream
         val entrada = BufferedReader(InputStreamReader(socket.inputStream, Charsets.UTF_8))
@@ -203,6 +220,7 @@ object VerificacionConductor {
                         avisar(onAvance, "Rostro ${rostros.size} de ${campos["DE"] ?: "3"} capturado. Sigue mirando a la cámara…")
                     }
                 }
+                "VISTA" -> leerVista(campos)?.let { vista -> withContext(Dispatchers.Main) { onVista(vista) } }
                 "FIN_ROSTROS" -> {
                     cancelar()                      // el ESP ya terminó: se suelta el Bluetooth
                     return reconocerEnServidor(contexto, rostros, onAvance)
@@ -263,6 +281,25 @@ object VerificacionConductor {
         socketActual.set(insegura)
         insegura.connect()
         return insegura
+    }
+
+    // P3-S3: VISTA;W:320;H:240;CAJA:x1,y1,x2,y2;SIRVE:SI;JPG:<base64>  ->  VistaPrevia (o null si viene dañada)
+    private fun leerVista(campos: Map<String, String>): VistaPrevia? {
+        val jpg = campos["JPG"]?.takeIf { it.length in 1..MAX_LARGO_ROSTRO } ?: return null
+        return try {
+            val bytes = Base64.decode(jpg, Base64.DEFAULT)
+            val mapa = BitmapFactory.decodeByteArray(bytes, 0, bytes.size) ?: return null
+            val caja = campos["CAJA"]?.split(",")?.mapNotNull { it.trim().toIntOrNull() }?.takeIf { it.size == 4 }
+            VistaPrevia(
+                mapa.asImageBitmap(),
+                campos["W"]?.toIntOrNull() ?: mapa.width,
+                campos["H"]?.toIntOrNull() ?: mapa.height,
+                caja,
+                campos["SIRVE"] == "SI"
+            )
+        } catch (e: IllegalArgumentException) {
+            null
+        }
     }
 
     // "CONDUCTOR;CED:1001;NOM:Jesús" -> ("CONDUCTOR", {CED=1001, NOM=Jesús})

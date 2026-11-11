@@ -17,6 +17,8 @@
     Celular -> ESP        ESP -> Celular
     PING                  PONG
     IDENTIFICAR           IDENTIFICANDO                              (de inmediato)
+                          VISTA;W:320;H:240;CAJA:x1,y1,x2,y2;SIRVE:SI;JPG:<base64>
+                                                                      (vista previa, ~3 por segundo)
                           ROSTRO;N:1;DE:3;ANCHO:152;JPG:<base64>      (1 a 3 rostros recortados)
                           FIN_ROSTROS;N:3                             (el celular los manda al servidor)
                           NO_RECONOCIDO;SIM:0.00;MOTIVO:...           (no se vio ningun rostro)
@@ -49,7 +51,9 @@
 // ------------------------------------------------------------------
 const char *NOMBRE_BT = "Orbita-Cabina";
 const int ROSTROS_POR_IDENTIFICACION = 3;   // el servidor exige que coincidan
-const uint32_t SEGUNDOS_IDENTIFICAR = 10;   // la app espera en total hasta 40 s
+const uint32_t SEGUNDOS_IDENTIFICAR = 15;   // la app espera en total hasta 40 s
+const uint32_t MS_ENTRE_VISTAS = 300;       // vista previa para la app: ~3 cuadros por segundo
+const int CALIDAD_VISTA = 25;               // JPEG liviano (~5 KB): solo es para ubicarse
 const uint32_t MS_ENTRE_ROSTROS = 400;      // rostros de cuadros distintos, no del mismo instante
 const int ANCHO_MIN_ROSTRO = 70;            // px en 320x240 (igual que ANCHO_MIN_RECONOCER de comun.py)
 const float MARGEN_RECORTE = 0.45f;         // se agrega este tanto del ancho del rostro a cada lado
@@ -163,10 +167,15 @@ String recorte_base64(camera_fb_t *fb, const Rostro &r) {
   if (!recorte) return "";
   for (int y = 0; y < lado; y++)
     memcpy(recorte + (size_t)y * lado * 2, fb->buf + ((size_t)(y0 + y) * w + x0) * 2, (size_t)lado * 2);
-  uint8_t *jpg = NULL; size_t n = 0;
-  bool ok = fmt2jpg(recorte, bytes, lado, lado, PIXFORMAT_RGB565, CALIDAD_JPEG, &jpg, &n);
+  String texto = jpeg_base64(recorte, bytes, lado, lado, CALIDAD_JPEG);
   free(recorte);
-  if (!ok) return "";
+  return texto;
+}
+
+// RGB565 -> JPEG -> base64 (texto que cabe en una línea del protocolo).
+String jpeg_base64(uint8_t *rgb565, size_t bytes, int ancho, int alto, int calidad) {
+  uint8_t *jpg = NULL; size_t n = 0;
+  if (!fmt2jpg(rgb565, bytes, ancho, alto, PIXFORMAT_RGB565, calidad, &jpg, &n)) return "";
   size_t largo = 0;
   mbedtls_base64_encode(NULL, 0, &largo, jpg, n);
   uint8_t *b64 = (uint8_t *)ps_malloc(largo + 1);
@@ -180,18 +189,38 @@ String recorte_base64(camera_fb_t *fb, const Rostro &r) {
   return texto;
 }
 
+// Vista previa para la app: el cuadro completo en JPEG liviano y la caja del rostro (si hay).
+//   VISTA;W:320;H:240;CAJA:x1,y1,x2,y2;SIRVE:SI|NO;JPG:<base64>
+// Así el conductor ve en el celular dónde está la cámara y si su cara está bien ubicada.
+void mandar_vista(Stream &canal, camera_fb_t *fb, const Rostro &r) {
+  String b64 = jpeg_base64(fb->buf, fb->len, fb->width, fb->height, CALIDAD_VISTA);
+  if (!b64.length()) return;
+  String txt = "VISTA;W:" + String(fb->width) + ";H:" + String(fb->height);
+  if (r.hay) {
+    txt += ";CAJA:" + String(r.x1) + "," + String(r.y1) + "," + String(r.x2) + "," + String(r.y2) +
+           (r.ancho() >= ANCHO_MIN_ROSTRO ? ";SIRVE:SI" : ";SIRVE:NO");
+  }
+  canal.print(txt + ";JPG:");               // sin eco en el cable: son ~7 KB por cuadro
+  canal.print(b64);
+  canal.print("\n");
+}
+
 // Junta hasta 'cuantos' rostros de cuadros distintos en 'ms' milisegundos y los manda.
-// Devuelve cuantos mando.
-int mandar_rostros(Stream &canal, int cuantos, uint32_t ms) {
+// Con 'con_vista', además manda la vista previa cada MS_ENTRE_VISTAS. Devuelve cuántos mandó.
+int mandar_rostros(Stream &canal, int cuantos, uint32_t ms, bool con_vista) {
   int mandados = 0;
-  uint32_t inicio = millis(), ultimo = 0;
+  uint32_t inicio = millis(), ultimo = 0, ultima_vista = 0;
   int cuadros = 0;
   while (mandados < cuantos && millis() - inicio < ms) {
     camera_fb_t *fb = esp_camera_fb_get();
     if (!fb) { enviar(canal, "ERROR;MOTIVO:la camara dejo de enviar imagenes"); return -1; }
     cuadros++;
+    Rostro r = detectar(fb);
+    if (con_vista && millis() - ultima_vista >= MS_ENTRE_VISTAS) {
+      ultima_vista = millis();
+      mandar_vista(canal, fb, r);
+    }
     if (millis() - ultimo >= MS_ENTRE_ROSTROS) {
-      Rostro r = detectar(fb);
       if (r.hay && r.ancho() >= ANCHO_MIN_ROSTRO) {
         String b64 = recorte_base64(fb, r);
         if (b64.length()) {
@@ -215,7 +244,7 @@ int mandar_rostros(Stream &canal, int cuantos, uint32_t ms) {
 void identificar(Stream &canal) {
   enviar(canal, "IDENTIFICANDO");
   if (!camara_ok) { enviar(canal, "ERROR;MOTIVO:la camara no inicio"); return; }
-  int n = mandar_rostros(canal, ROSTROS_POR_IDENTIFICACION, SEGUNDOS_IDENTIFICAR * 1000UL);
+  int n = mandar_rostros(canal, ROSTROS_POR_IDENTIFICACION, SEGUNDOS_IDENTIFICAR * 1000UL, &canal != &Serial);
   if (n < 0) return;
   if (n == 0) { enviar(canal, "NO_RECONOCIDO;SIM:0.00;MOTIVO:no se vio ningun rostro de frente y cerca"); return; }
   enviar(canal, "FIN_ROSTROS;N:" + String(n));
@@ -226,7 +255,7 @@ void capturar(Stream &canal, const String &linea) {
   if (n <= 0 || n > 20) n = 8;
   if (!camara_ok) { enviar(canal, "ERROR;MOTIVO:la camara no inicio"); return; }
   enviar(canal, "CAPTURANDO;N:" + String(n) + ";MSG:mira a la camara y mueve un poco la cabeza");
-  int hechos = mandar_rostros(canal, n, 60000UL);
+  int hechos = mandar_rostros(canal, n, 60000UL, false);
   if (hechos >= 0) enviar(canal, "FIN_ROSTROS;N:" + String(hechos));
 }
 

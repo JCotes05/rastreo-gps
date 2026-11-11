@@ -89,7 +89,7 @@ internal val Manrope = FontFamily(
 /** P3-S1: en qué va la verificación del conductor antes de transmitir. */
 sealed class FaseVerificacion {
     object Inactiva : FaseVerificacion()
-    data class EnCurso(val texto: String) : FaseVerificacion()
+    data class EnCurso(val texto: String, val vista: VistaPrevia? = null) : FaseVerificacion()   // vista: P3-S3
     data class Fallida(val titulo: String, val detalle: String) : FaseVerificacion()
 }
 
@@ -732,9 +732,11 @@ class MainActivity : ComponentActivity() {
     private fun verificar(pc: EquipoBluetooth) {
         fase = FaseVerificacion.EnCurso("Conectando con ${pc.nombre}…")
         trabajoVerificacion = lifecycleScope.launch {
-            val resultado = VerificacionConductor.identificar(this@MainActivity, pc.direccion) { texto ->
-                fase = FaseVerificacion.EnCurso(texto)
-            }
+            val resultado = VerificacionConductor.identificar(
+                this@MainActivity, pc.direccion,
+                onAvance = { texto -> fase = FaseVerificacion.EnCurso(texto, (fase as? FaseVerificacion.EnCurso)?.vista) },
+                onVista = { vista -> (fase as? FaseVerificacion.EnCurso)?.let { fase = it.copy(vista = vista) } }
+            )
             when (resultado) {
                 is ResultadoVerificacion.Reconocido -> {
                     fase = FaseVerificacion.Inactiva
