@@ -1,78 +1,261 @@
-ORBITA - ESP32 de sensores de la carga (P3-S3)  ·  BORRADOR, todavia sin probar en hardware
-=========================================================================================
+ORBITA - ESP32 de sensores de la carga (P3-S3) · firmware 1.0 · protocolo VER:1
+==================================================================================
 
-Que hace
-  Va en la zona de la carga. Detecta frenadas bruscas, huecos y curvas bruscas con el
-  GY-521 (MPU-6050) y si entra luz a la carga (carga abierta) con una fotoresistencia.
-  No usa Wi-Fi: le manda todo al celular del conductor por Bluetooth (SPP), y la app
-  lo sube al servidor con la posicion GPS y la hora.
+QUE HACE
+  Va en la zona de la carga. Con el GY-521 (MPU-6050) detecta frenadas bruscas,
+  huecos y curvas bruscas; con una fotoresistencia (LDR) detecta si entra luz a la
+  carga (= carga ABIERTA). No usa Wi-Fi: le manda todo al celular del conductor por
+  Bluetooth clasico (SPP) y la app lo sube al servidor con el GPS y la hora.
 
-Materiales
-  - ESP32 DevKit (ESP32-WROOM-32, 30 o 38 pines). NO el ESP32-CAM.
+  Estado: compila sin errores en Arduino IDE con "esp32 by Espressif" 3.3.11, placa
+  "ESP32 Dev Module". La logica (eventos, umbrales, luz, protocolo) se probo en el PC
+  con un sensor simulado. Falta probarlo en la protoboard real (lista al final).
+
+
+1. MATERIALES
+  - ESP32 DevKit normal (ESP32-WROOM-32, de 30 o 38 pines). NO sirve un ESP32-S3 ni
+    un C3 (no tienen Bluetooth clasico) y NO es para el ESP32-CAM.
   - Modulo GY-521 (MPU-6050).
-  - Fotoresistencia (LDR, la comun de 5 mm) + resistencia de 10 kOhm.
-  - Protoboard y cables.
+  - Fotoresistencia (LDR comun de 5 mm, tipo GL5528) + resistencia de 10 kOhm
+    (cafe-negro-naranja).
+  - Protoboard, cables macho-macho y un cable USB DE DATOS (algunos solo cargan).
 
-Conexiones
-  GY-521          ESP32
-  VCC  --------   3V3
-  GND  --------   GND
-  SCL  --------   GPIO 22
-  SDA  --------   GPIO 21
-  (XDA, XCL, AD0 e INT sin conectar; AD0 sin conectar = direccion 0x68)
 
-  Fotoresistencia en divisor de voltaje:
-     3V3 ---[ LDR ]---+---[ 10 kOhm ]--- GND
-                      |
-                   GPIO 34
-  Con luz, la LDR baja su resistencia y GPIO 34 sube (lectura alta = carga ABIERTA).
-  GPIO 34 es del ADC1: los pines del ADC2 NO funcionan mientras el Bluetooth esta activo.
+2. AVISOS DE HARDWARE (leer antes de conectar)
+  - Todo va a 3V3, NUNCA a 5V/VIN: el GPIO 34 y el I2C del ESP32 aguantan maximo
+    3,3 V. Si la LDR va a 5 V, puede danar el pin.
+  - El GY-521 tiene su propio regulador; a 3V3 funciona igual (el MPU-6050 trabaja
+    desde 2,4 V). Sus resistencias de I2C quedan a 3,3 V: compatibles con el ESP32.
+  - GPIO 34 es SOLO de entrada y es del ADC1: perfecto para la LDR. No use pines del
+    ADC2 (GPIO 0, 2, 4, 12-15, 25-27): no leen mientras el Bluetooth esta encendido.
+  - Todas las tierras (GND) juntas.
+  - El modulo GY-521 debe quedar FIRME en la protoboard (sin bailar). Si se mueve
+    suelto, cada golpe de la mano parece un hueco.
+  - El ESP32 DevKit muchas veces no cabe con pines libres a ambos lados en una sola
+    protoboard: use dos protoboards juntas o deje una fila libre por lado.
+  - El LED azul del DevKit esta en GPIO 2. Si su placa no lo tiene, no pasa nada.
 
-  Montaje del GY-521: plano, con el eje X (marcado en el modulo) hacia ADELANTE del
-  camion y Z hacia ARRIBA. Si queda distinto, cambie EJE_LONGITUDINAL, EJE_LATERAL,
-  EJE_VERTICAL y SIGNO_LONGITUDINAL al inicio del .ino.
 
-Como subirlo (Arduino IDE 2)
-  1. Archivo > Preferencias > "URLs adicionales de gestor de placas":
+3. CONEXIONES PIN A PIN
+
+  GY-521            ESP32 DevKit
+  ------            ------------
+  VCC  ----------   3V3
+  GND  ----------   GND
+  SCL  ----------   GPIO 22  (D22)
+  SDA  ----------   GPIO 21  (D21)
+  XDA, XCL, AD0, INT: sin conectar  (AD0 sin conectar = direccion 0x68)
+
+  Fotoresistencia (LDR) en divisor de voltaje:
+
+  LDR pata 1 ------  3V3
+  LDR pata 2 ------  GPIO 34 (D34)  y  una pata de la resistencia de 10 kOhm
+  10 kOhm otra pata  GND
+
+  Diagrama:
+
+        3V3 ●──────────────┬──────────────────────┐
+                           │                      │
+                      ┌────┴────┐            ┌────┴────┐
+                      │ GY-521  │            │   LDR   │
+                      │ VCC     │            └────┬────┘
+        GND ●─────────┤ GND     │                 │
+         │            │ SCL ────┼── GPIO 22       ├──────── GPIO 34
+         │            │ SDA ────┼── GPIO 21       │
+         │            └─────────┘            ┌────┴────┐
+         │                                   │ 10 kOhm │
+         │                                   └────┬────┘
+         └────────────────────────────────────────┘
+
+  Con luz la LDR baja su resistencia y GPIO 34 sube:
+    lectura alta (0-4095) = luz = carga ABIERTA ; lectura baja = oscuro = CERRADA.
+
+  Montaje del GY-521: plano, con los componentes hacia arriba. La flecha "X" impresa
+  en el modulo indica hacia donde es ADELANTE del camion (se puede cambiar con el
+  comando EJE si lo monta distinto). El firmware detecta solo cual eje quedo
+  vertical al arrancar.
+
+
+4. INSTALAR LA PLACA EN ARDUINO IDE (una sola vez)
+  1. Instale Arduino IDE 2 (arduino.cc/en/software).
+  2. Archivo > Preferencias > "URLs adicionales de gestor de placas", pegue:
        https://espressif.github.io/arduino-esp32/package_esp32_index.json
-  2. Herramientas > Placa > Gestor de placas: instale "esp32 by Espressif Systems".
-  3. Herramientas > Placa: "ESP32 Dev Module". Puerto: el COM del ESP32 (cable USB de datos).
-  4. Abra esp32_sensores.ino y toque Subir. Si se queda en "Connecting....", mantenga
-     presionado el boton BOOT del ESP32 hasta que empiece a subir.
-  5. Herramientas > Monitor serie a 115200 baudios, con "Nueva linea".
-  No necesita librerias extra: BluetoothSerial y Wire vienen con la placa.
+  3. Herramientas > Placa > Gestor de placas: busque "esp32" e instale
+     "esp32 by Espressif Systems" (3.3.11 o cualquier 3.x).
+  4. Si Windows no ve el ESP32 al conectarlo (no aparece puerto COM), instale el
+     driver del chip USB de su placa: CP2102 (Silicon Labs) o CH340 (WCH). El nombre
+     del chip esta escrito en el integrado junto al conector USB.
+  No hace falta instalar librerias: Wire, BluetoothSerial y Preferences vienen con
+  la placa.
 
-Calibracion (en el monitor serie)
-  CERO       con el sensor QUIETO, mide 2 s y guarda el desfase de los ejes.
-  CAL        muestra ax, ay, az (en g) y la luz cada 100 ms. Otra vez CAL para salir.
-             - Frenada: empuje la protoboard hacia adelante y detengala de golpe: ax baja.
-             - Hueco: de un golpe seco hacia arriba: az se aleja de 1.
-             - Luz: tape y destape la LDR y anote los valores de oscuro y de luz.
-  UMBRALES   muestra los umbrales actuales.
-  PRUEBA     manda una frenada de prueba por Bluetooth (sirve para probar la app).
-  Los umbrales estan como constantes al inicio del .ino (seccion CONFIGURACION):
-    frenada  < -0,40 g sostenida 200 ms o mas
-    hueco    pico vertical > 0,8 g de menos de 150 ms
-    curva    lateral > 0,40 g sostenida 300 ms
-    despues de cada evento, 2 s sin repetir el mismo tipo
-    luz      abre por encima de 400, cierra por debajo de 250 (histeresis), sostenido 0,5 s
-  Ajuste LUZ_ABRE y LUZ_CIERRA con lo que midio en CAL (la LDR cambia mucho de una a otra).
 
-Vincular con el celular
-  1. Encienda el ESP32. En el celular: Ajustes > Bluetooth > vincular "Orbita-Sensores".
-  2. En la app: menu (tres puntos) > "Sensores de la carga" > elegir "Orbita-Sensores".
-  3. Al tocar "Iniciar viaje", la app se conecta, manda INICIO;ENVIO:<n> y desde ahi el
-     ESP manda los eventos. Al finalizar, manda FIN. El LED azul del DevKit se enciende
-     mientras el celular esta conectado.
+5. SUBIR EL PROGRAMA
+  1. Abra firmware/esp32_sensores/esp32_sensores.ino (la carpeta debe llamarse
+     igual que el archivo: esp32_sensores).
+  2. Herramientas > Placa > esp32 > "ESP32 Dev Module".
+  3. Herramientas > Puerto: el COM del ESP32 (desconecte y conecte para ver cual
+     aparece).
+  4. Toque Subir (flecha). Tarda 1-2 minutos la primera vez. Al compilar sale un
+     aviso amarillo "BluetoothSerial is deprecated": es normal, no es un error.
+  5. Si se queda en "Connecting......", mantenga presionado el boton BOOT del ESP32
+     hasta que empiece a subir (aparecen porcentajes).
+  6. Abra Herramientas > Monitor serie, a 115200 baudios y con "Nueva linea"
+     (abajo a la derecha). Presione EN (reset) en el ESP32: debe ver
+       # ORBITA - ESP32 de sensores de la carga · firmware 1.0 · protocolo VER:1
+       # GY-521 listo (MPU-6050, WHO_AM_I=0x68).
+       # Calibrando la gravedad: deje el sensor QUIETO 2 s...
+       # Bluetooth listo como 'ORBITA-SENSORES'...
+       # Gravedad: x=... y=... z=+1.0.. g (total 1.0.. g). Eje vertical: Z+. Adelante: X+.
 
-Protocolo (una linea por mensaje, terminada en \n)
-  Celular -> ESP:  PING | INICIO;ENVIO:<id> | FIN
-  ESP -> Celular:  PONG
-                   HOLA;DISP:SENSORES;VER:1
-                   EVENTO;TIPO:FRENADA|HUECO|CURVA;G:<g>;SEQ:<n>
-                   LUZ;ESTADO:ABIERTA|CERRADA;NIVEL:<0-4095>;SEQ:<n>
-                   LATIDO;LUZ:<nivel>;ESTADO:ABIERTA|CERRADA     (cada 10 s)
+  En el monitor serie: las lineas que empiezan con "# " son avisos para usted; las
+  demas son el protocolo, exactamente como las recibe el celular.
 
-Sin hardware
-  reconocimiento/simulador_esp_sensores.py hace exactamente lo mismo desde el PC por
-  un puerto COM Bluetooth (teclas f, h, c, a, z).
+  El LED azul: parpadeo rapido = calibrando la gravedad; fijo = celular conectado;
+  un destello cada 2 s = el GY-521 no responde.
+
+
+6. COMANDOS DEL MONITOR SERIE
+  AYUDA                     lista de comandos
+  CAL                       muestra 10 veces por segundo:
+                              ax ay az   = lectura cruda de cada eje del modulo (g)
+                              lon lat vert = aceleracion SIN gravedad hacia adelante,
+                                             al lado y vertical (g)
+                              luz        = nivel 0-4095 y estado
+                            (CAL otra vez para salir). En CAL tambien se avisa por
+                            que un movimiento NO conto (muy corto, antirrebote...).
+  VER                       estado, gravedad, ejes y todos los umbrales
+  UMBRAL                    lista los umbrales
+  UMBRAL <NOMBRE> <valor>   cambia uno y lo guarda en la memoria (sobrevive al
+                            apagado; no hay que recompilar). Ejemplos:
+                              UMBRAL FRENADA 0.35
+                              UMBRAL HUECO_MS 120
+                              UMBRAL LUZ_ABRE 900
+  EJE X+                    eje del modulo que apunta ADELANTE (X+, X-, Y+, Y-, Z+, Z-)
+  RECAL                     vuelve a medir la gravedad (dejelo quieto 2 s)
+  OSCURO                    mide la luz con la LDR TAPADA
+  CLARO                     mide la luz con la LDR DESTAPADA; con las dos medidas
+                            calcula y guarda LUZ_ABRE y LUZ_CIERRA
+  PRUEBA FRENADA            manda un evento de prueba (tambien HUECO o CURVA);
+                            necesita un viaje iniciado
+  FABRICA                   vuelve a los umbrales iniciales
+
+  Modo prueba SIN celular: escriba en el monitor los mismos mensajes del celular:
+    PING              -> responde PONG
+    INICIO;ENVIO:1    -> responde HOLA;DISP:SENSORES;VER:1 y LUZ;ESTADO:...;SEQ:n
+                         y desde ahi aparecen los EVENTO y los cambios de LUZ
+    FIN               -> deja de mandar eventos
+  El LATIDO sale cada 10 s en el monitor siempre (y al celular si esta conectado).
+
+  Umbrales y valores iniciales:
+    FRENADA 0.40 g     aceleracion hacia atras de mas de 0,40 g...
+    FRENADA_MS 200     ...durante 200 ms o mas
+    HUECO 0.80 g       pico vertical |az - 1 g| de mas de 0,8 g...
+    HUECO_MS 150       ...que dure MENOS de 150 ms (si dura mas es una loma, no cuenta)
+    CURVA 0.40 g       aceleracion lateral de mas de 0,40 g...
+    CURVA_MS 100       ...sostenida al menos 100 ms
+    ANTIRREBOTE_MS 2000  2 s sin repetir el mismo tipo de evento
+    LUZ_ABRE 400       por encima: carga ABIERTA
+    LUZ_CIERRA 250     por debajo: carga CERRADA (entre los dos no cambia = histeresis)
+    LUZ_MS 300         el cambio de luz debe durar 300 ms
+
+
+7. CALIBRAR, PASO A PASO
+  Paso 1. Gravedad. Deje la protoboard quieta sobre la mesa y presione EN (o escriba
+          RECAL). Debe salir "total" cerca de 1,00 g y "Eje vertical: Z+" si el
+          modulo esta plano. Si sale "Se movio durante la calibracion", no toque la
+          mesa.
+  Paso 2. Direccion. Escriba CAL. Empuje la protoboard suavemente hacia donde apunta
+          la flecha X del modulo: "lon" debe ponerse POSITIVO al arrancar. Si se pone
+          negativo, escriba EJE X-. Si cambia "lat" en vez de "lon", escriba EJE Y+
+          (o EJE Y-) y repita.
+  Paso 3. Frenada. Con CAL activo, deslice la protoboard hacia adelante y parela en
+          seco. Mire el valor mas negativo de "lon" (por ejemplo -0.55). Hagalo 5
+          veces: debe salir un EVENTO FRENADA (con viaje) o "(sin viaje) FRENADA"
+          (sin viaje) casi todas las veces. Si no sale nunca, baje el umbral:
+          UMBRAL FRENADA 0.30. Si sale con movimientos suaves, subalo.
+          Si sale "(muy corta) ... duro 120 ms", la parada es demasiado rapida: baje
+          UMBRAL FRENADA_MS 120.
+  Paso 4. Hueco. De un golpe seco con el dedo en la protoboard junto al modulo (o
+          levante 1 cm y deje caer). Mire "vert": debe pasar de 0,8. Si no llega,
+          UMBRAL HUECO 0.6. Si sale "(no es hueco) ... duro 200 ms", el golpe fue
+          lento: hagalo mas seco o suba UMBRAL HUECO_MS 200.
+  Paso 5. Curva. Deslice la protoboard de lado (hacia la izquierda o derecha de la
+          flecha X) y frene. Mire "lat". Ajuste UMBRAL CURVA igual que la frenada.
+  Paso 6. Luz. Tape la LDR con el dedo o una tapa oscura y escriba OSCURO. Destapela
+          (con la luz del salon) y escriba CLARO. El firmware calcula y guarda
+          LUZ_ABRE y LUZ_CIERRA. Si dice "casi no hay diferencia", revise el divisor.
+  Paso 7. Escriba VER y anote los valores finales en el bloque PARA INTEGRAR
+          (archivo PARA_INTEGRAR.md).
+  Salga de CAL escribiendo CAL.
+
+
+8. VINCULAR CON EL CELULAR ANDROID
+  1. Encienda el ESP32 (USB al PC o a un cargador de celular).
+  2. En el celular: Ajustes > Bluetooth (o "Dispositivos conectados") > Vincular
+     nuevo dispositivo. Aparece "ORBITA-SENSORES". Toquelo. No pide clave; si
+     muestra un codigo o un "¿Vincular?", acepte.
+  3. En la app Orbita: menu (tres puntos) > "Sensores de la carga" > elija
+     "ORBITA-SENSORES".
+  4. Al tocar "Iniciar viaje" la app se conecta sola (LED azul fijo), manda PING e
+     INICIO;ENVIO:<n>, y desde ahi el ESP manda eventos. En el monitor serie ve
+     "# Celular conectado." y "# <- INICIO;ENVIO:<n>". Al finalizar el viaje, la
+     app manda FIN.
+  5. Si se cae la conexion, el ESP vuelve a aceptar conexiones solo y la app se
+     reconecta y manda INICIO otra vez. No hace falta reiniciar nada.
+  Si el celular no ve el ESP: el Bluetooth del PC u otro celular podria estar
+  conectado a el (solo acepta uno a la vez). Desconectelo.
+  Si se vinculo antes con el nombre viejo "Orbita-Sensores", en el celular toque
+  "Olvidar" ese equipo y vincule de nuevo.
+
+
+9. PRUEBAS EN LA PROTOBOARD (con resultado esperado)
+  Prepare: monitor serie abierto, y la app con un viaje iniciado (o escriba
+  INICIO;ENVIO:1 en el monitor). Entre una prueba y otra espere 2 s (antirrebote).
+
+  P1  Arranque          Presione EN con la protoboard quieta.
+                        -> "GY-521 listo", "Gravedad ... total ~1,00 g", "Bluetooth
+                           listo como 'ORBITA-SENSORES'". LED parpadea 2 s.
+  P2  Sin GY-521        Desconecte el cable SDA y presione EN.
+                        -> "ATENCION: el GY-521 no responde..." cada 3 s, la luz y
+                           PING siguen funcionando. Reconecte SDA: "GY-521 listo"
+                           y calibra solo.
+  P3  PING              Escriba PING. -> PONG
+  P4  Inicio de viaje   Escriba INICIO;ENVIO:1.
+                        -> HOLA;DISP:SENSORES;VER:1 y LUZ;ESTADO:CERRADA;NIVEL:<n>;SEQ:1
+  P5  Frenada           Deslice hacia adelante y pare en seco.
+                        -> EVENTO;TIPO:FRENADA;G:0.xx;SEQ:n (una sola linea)
+  P6  Frenada suave     Deslice y pare despacio. -> nada
+  P7  Arranque fuerte   Empuje fuerte hacia adelante desde quieto. -> nada (acelerar
+                        no es frenar; al parar puede salir FRENADA, es correcto)
+  P8  Hueco             Golpe seco vertical junto al modulo.
+                        -> EVENTO;TIPO:HUECO;G:x.xx;SEQ:n
+  P9  Loma              Levante la protoboard despacio 5 cm y bajela despacio.
+                        -> nada
+  P10 Curva             Deslice de lado y pare. -> EVENTO;TIPO:CURVA;G:0.xx;SEQ:n
+  P11 Antirrebote       Dos frenadas seguidas en menos de 2 s. -> solo un EVENTO
+  P12 Abrir carga       Destape la LDR (o alumbre con la linterna del celular).
+                        -> LUZ;ESTADO:ABIERTA;NIVEL:<alto>;SEQ:n  (una sola vez)
+  P13 Cerrar carga      Tape la LDR. -> LUZ;ESTADO:CERRADA;NIVEL:<bajo>;SEQ:n
+  P14 Sombra parcial    Pase la mano por encima sin tapar del todo, o un destello
+                        corto. -> nada (histeresis y 300 ms)
+  P15 Latido            Espere 10 s. -> LATIDO;LUZ:<nivel>;ESTADO:<...> cada 10 s
+  P16 SEQ               Revise que SEQ sube de 1 en 1 con cada EVENTO o LUZ (el
+                        LATIDO no lleva SEQ).
+  P17 Fin de viaje      Escriba FIN y haga una frenada.
+                        -> solo "# (sin viaje) FRENADA de ..." (no sale EVENTO)
+  P18 Con el celular    Inicie un viaje en la app y repita P5, P8, P10, P12.
+                        -> En la pantalla "En viaje" suben los contadores; con P12
+                           aparece el aviso rojo "Carga abierta en plena ruta" y en
+                           la pagina la alerta carga_abierta. P13 la cierra.
+  P19 Caida Bluetooth   Con el viaje en curso, apague el Bluetooth del celular 10 s
+                        y vuelvalo a encender.
+                        -> Monitor: "Celular desconectado..." y luego "Celular
+                           conectado.", "<- PING", "<- INICIO;ENVIO:<n>". La app
+                           vuelve a "Sensores conectados" sin reiniciar el ESP.
+  P20 Apagado           Cambie un umbral, desconecte el USB y conecte de nuevo.
+                        Escriba VER. -> el umbral sigue cambiado.
+
+
+10. SIN HARDWARE
+  reconocimiento/simulador_esp_sensores.py hace lo mismo desde el PC por un puerto
+  COM Bluetooth (teclas f, h, c, a, z).
