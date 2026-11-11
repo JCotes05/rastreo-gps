@@ -16,6 +16,10 @@ BEGIN
     IF to_regclass('eventos_carga') IS NOT NULL THEN
         DELETE FROM eventos_carga WHERE id_envio IN (SELECT id FROM envios WHERE placa LIKE 'ZZZ%');
     END IF;
+    -- P3-S3 (rostros): intentos de identificación de los camiones de prueba.
+    IF to_regclass('identificaciones') IS NOT NULL THEN
+        DELETE FROM identificaciones WHERE placa LIKE 'ZZZ%';
+    END IF;
 END $$;
 DELETE FROM envios   WHERE placa LIKE 'ZZZ%';
 DELETE FROM camiones WHERE placa LIKE 'ZZZ%';

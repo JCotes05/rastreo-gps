@@ -22,20 +22,26 @@ import java.util.UUID
 import java.util.concurrent.atomic.AtomicReference
 
 // ====================================================================
-//  P3-S1 · VERIFICACIÓN DEL CONDUCTOR POR BLUETOOTH
+//  P3-S1 / P3-S3 · VERIFICACIÓN DEL CONDUCTOR POR BLUETOOTH
 //  El celular (que hace de módem satelital del camión) se conecta al
-//  computador de reconocimiento facial, le pide IDENTIFICAR y espera:
+//  equipo de reconocimiento, le pide IDENTIFICAR y espera:
 //      IDENTIFICANDO                                   (ya está mirando)
+//  y luego, si es el COMPUTADOR de P3-S1 (reconoce él mismo):
 //      CONDUCTOR;CED:1001000001;NOM:Jesús Cotes;SIM:0.82
 //      NO_RECONOCIDO;SIM:0.21
 //      ERROR;MOTIVO:...
+//  o, si es el ESP32-CAM de P3-S3 (esquema híbrido: solo detecta):
+//      ROSTRO;N:1;DE:3;ANCHO:152;JPG:<base64>          (1 a 3 rostros recortados)
+//      FIN_ROSTROS;N:3
+//  y el celular manda esos rostros al servidor, que los reconoce
+//  (POST /api/camiones/conductor/identificar) con la sesión del camión.
 //  Los campos se leen por su NOMBRE, no por posición.
 // ====================================================================
 
 /** Resultado de pedirle al computador que identifique al conductor. */
 sealed class ResultadoVerificacion {
     data class Reconocido(val cedula: String, val nombre: String, val similitud: Float) : ResultadoVerificacion()
-    data class NoReconocido(val similitud: Float) : ResultadoVerificacion()
+    data class NoReconocido(val similitud: Float, val motivo: String? = null) : ResultadoVerificacion()
     data class Fallo(val mensaje: String) : ResultadoVerificacion()
 }
 
@@ -48,8 +54,11 @@ object VerificacionConductor {
     // entrante de Windows, y el mismo que usan el ESP32 de sensores y el ESP32-CAM (P3-S3).
     internal val UUID_SPP: UUID = UUID.fromString("00001101-0000-1000-8000-00805F9B34FB")
 
-    // Conexión + identificación. El computador responde en máximo ~10 s; esto es el colchón.
-    private const val TIEMPO_MAXIMO_MS = 25_000L
+    // Conexión + identificación. El computador responde en máximo ~10 s; el ESP32-CAM junta
+    // los rostros en máximo ~10 s y el servidor tarda 1-3 s más. Esto es el colchón.
+    private const val TIEMPO_MAXIMO_MS = 40_000L
+    private const val MAX_ROSTROS = 5
+    private const val MAX_LARGO_ROSTRO = 280_000           // base64 de un JPEG de ~200 KB
 
     private const val PERMISO_CONECTAR = "android.permission.BLUETOOTH_CONNECT"   // Android 12+
     private const val PREFS = "rastreo_prefs"
@@ -141,7 +150,7 @@ object VerificacionConductor {
                 cancelar()
             }
             try {
-                withContext(Dispatchers.IO) { conversar(equipo, onAvance) }
+                withContext(Dispatchers.IO) { conversar(contexto, equipo, onAvance) }
             } catch (e: IOException) {
                 if (tiempoAgotado) {
                     ResultadoVerificacion.Fallo("El equipo de reconocimiento no respondió a tiempo.")
@@ -161,7 +170,7 @@ object VerificacionConductor {
     }
 
     // Conversación completa con el computador (corre en segundo plano).
-    private suspend fun conversar(equipo: BluetoothDevice, onAvance: (String) -> Unit): ResultadoVerificacion {
+    private suspend fun conversar(contexto: Context, equipo: BluetoothDevice, onAvance: (String) -> Unit): ResultadoVerificacion {
         val socket = conectar(equipo)
         val salida = socket.outputStream
         val entrada = BufferedReader(InputStreamReader(socket.inputStream, Charsets.UTF_8))
@@ -170,6 +179,7 @@ object VerificacionConductor {
         salida.flush()
         avisar(onAvance, "Esperando al equipo de reconocimiento…")
 
+        val rostros = ArrayList<String>()       // P3-S3: recortes que manda el ESP32-CAM
         var linea = entrada.readLine()
         while (linea != null) {
             val (tipo, campos) = interpretar(linea)
@@ -183,7 +193,20 @@ object VerificacionConductor {
                     val nombre = campos["NOM"]?.takeIf { it.isNotBlank() } ?: cedula
                     return ResultadoVerificacion.Reconocido(cedula, nombre, campos["SIM"]?.toFloatOrNull() ?: 0f)
                 }
-                "NO_RECONOCIDO" -> return ResultadoVerificacion.NoReconocido(campos["SIM"]?.toFloatOrNull() ?: 0f)
+                "NO_RECONOCIDO" -> return ResultadoVerificacion.NoReconocido(
+                    campos["SIM"]?.toFloatOrNull() ?: 0f, campos["MOTIVO"]
+                )
+                "ROSTRO" -> {
+                    val jpg = campos["JPG"].orEmpty()
+                    if (jpg.isNotEmpty() && jpg.length <= MAX_LARGO_ROSTRO && rostros.size < MAX_ROSTROS) {
+                        rostros.add(jpg)
+                        avisar(onAvance, "Rostro ${rostros.size} de ${campos["DE"] ?: "3"} capturado. Sigue mirando a la cámara…")
+                    }
+                }
+                "FIN_ROSTROS" -> {
+                    cancelar()                      // el ESP ya terminó: se suelta el Bluetooth
+                    return reconocerEnServidor(contexto, rostros, onAvance)
+                }
                 "ERROR" -> return ResultadoVerificacion.Fallo(
                     "El equipo de reconocimiento respondió: ${campos["MOTIVO"] ?: "error desconocido"}."
                 )
@@ -192,6 +215,35 @@ object VerificacionConductor {
             linea = entrada.readLine()
         }
         return ResultadoVerificacion.Fallo("El equipo de reconocimiento cerró la conexión sin responder.")
+    }
+
+    // P3-S3: el servidor reconoce los rostros que detectó el ESP32-CAM (esquema híbrido).
+    private suspend fun reconocerEnServidor(
+        contexto: Context,
+        rostros: List<String>,
+        onAvance: (String) -> Unit
+    ): ResultadoVerificacion {
+        if (rostros.isEmpty()) return ResultadoVerificacion.NoReconocido(0f, "No se vio ningún rostro.")
+        val token = Sesion.token(contexto)
+            ?: return ResultadoVerificacion.Fallo("Inicia sesión con el camión para poder verificar al conductor.")
+        avisar(onAvance, "Verificando el rostro en el servidor…")
+        return when (val r = ApiOrbita.identificarConductor(token, rostros)) {
+            is Respuesta.Ok -> {
+                val j = r.json
+                val similitud = j.optDouble("similitud", 0.0).toFloat()
+                if (j.optString("estado") == "reconocido") {
+                    val cedula = j.optString("cedula")
+                    if (!PATRON_CEDULA.matches(cedula)) {
+                        ResultadoVerificacion.Fallo("El servidor mandó una cédula inválida.")
+                    } else {
+                        ResultadoVerificacion.Reconocido(cedula, j.texto("nombre") ?: cedula, similitud)
+                    }
+                } else {
+                    ResultadoVerificacion.NoReconocido(similitud, j.texto("motivo"))
+                }
+            }
+            is Respuesta.Error -> ResultadoVerificacion.Fallo(r.mensaje)
+        }
     }
 
     @SuppressLint("MissingPermission")

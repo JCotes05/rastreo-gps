@@ -2,6 +2,7 @@
 conductores_rostros.json
 conductores_rostros.json.tmp
 fotos/
+fotos_esp/
 registro_identificaciones.csv
 __pycache__/
 # Calibración (dice quién participó) y respaldos locales de la base

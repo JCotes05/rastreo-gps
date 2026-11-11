@@ -1,0 +1,70 @@
+ORBITA - Equipo de reconocimiento de la cabina: ESP32-CAM (P3-S3)
+===================================================================
+
+Que hace
+  El ESP32-CAM reemplaza al computador de reconocimiento de P3-S1. Esquema HIBRIDO:
+    1. La app (al tocar "Iniciar viaje") le manda IDENTIFICAR por Bluetooth.
+    2. El ESP32-CAM DETECTA el rostro del conductor (0,1-0,2 s por cuadro), lo recorta y
+       manda 3 recortes JPEG por Bluetooth (~9 KB cada uno, ~4 s en total).
+    3. La app los manda al servidor (POST /api/camiones/conductor/identificar), que los
+       RECONOCE con SFace (el mismo modelo del P3-S1) contra las huellas de la tabla
+       rostros_conductores, y responde la cedula y el nombre.
+  La planilla del recorrido se llena igual que en P3-S1.
+
+  Por que hibrido y no todo en la placa: el modelo de reconocimiento de esp-dl que cabe
+  en los 4 MB de flash junto con Bluetooth (S8) tarda ~14 s por rostro en el ESP32; el
+  rapido (S16) ocupa 2,4 MB y con Bluetooth no cabe (4,25 MB de 3,9 MB). Medido el 11-nov-2026.
+
+Hardware
+  ESP32-CAM AI-Thinker (4 MB de flash, 4 MB de PSRAM) con camara GC2145 (modulo RHYX M21-45)
+  u OV2640. Se programa con un adaptador USB-serie FTDI (o la base ESP32-CAM-MB):
+      FTDI 5V  -> 5V         FTDI GND -> GND
+      FTDI TX  -> U0R (GPIO3) FTDI RX  -> U0T (GPIO1)
+      Para subir el programa: GPIO0 a GND y RESET; despues se suelta GPIO0 y RESET otra vez.
+  La camara debe quedar frente a la cara del conductor, a 40-60 cm, con la cara completa
+  (frente a menton) en el centro de la imagen y luz de frente. Revisalo con el comando FOTO.
+
+Como compilarlo y subirlo
+  Necesita el nucleo esp32 de Espressif 2.0.17 (el 3.x ya no trae los detectores de rostros).
+  En Arduino IDE: Herramientas > Placa > Gestor de placas > esp32 > version 2.0.17.
+    Placa: "AI Thinker ESP32-CAM"    Partition Scheme: "Huge APP (3MB No OTA/1MB SPIFFS)"
+  Con arduino-cli (asi se hizo, con el nucleo 2.0.17 instalado aparte):
+    arduino-cli --config-file C:/Users/ASUS/AppData/Local/Arduino15_v2/arduino-cli.yaml ^
+      compile -b esp32:esp32:esp32cam:PartitionScheme=huge_app --upload -p COM6 .
+  Ocupa 1,78 MB (56 %).
+
+  iram.cpp: Bluetooth clasico + camara + las rutinas del detector se pasaban por 1,2 KB de
+  IRAM. Ese archivo reemplaza strftime (que el programa no usa) para que quepa. No lo borres.
+
+Protocolo Bluetooth (SPP, nombre "Orbita-Cabina"; una linea por mensaje)
+  PING          -> PONG
+  IDENTIFICAR   -> IDENTIFICANDO
+                   ROSTRO;N:1;DE:3;ANCHO:152;JPG:<base64>     (1 a 3 veces)
+                   FIN_ROSTROS;N:3
+                o  NO_RECONOCIDO;SIM:0.00;MOTIVO:no se vio ningun rostro de frente y cerca
+                o  ERROR;MOTIVO:...
+  ESTADO        -> ESTADO;CAMARA:OK;SENSOR:0x2145;...;VER:2
+  La app sigue entendiendo al computador de P3-S1, que responde CONDUCTOR;CED:...;NOM:...
+
+Comandos por el cable USB (115200 baudios, monitor serie con "Nueva linea")
+  CAPTURAR;N:10   manda 10 recortes para registrar al conductor (ver abajo)
+  PROBAR          10 s diciendo si ve un rostro, de que tamano y cuanto tarda
+  FOTO            foto completa en hexadecimal (para revisar el encuadre)
+  ESTADO          camara, memoria y Bluetooth
+
+Registrar a un conductor (una vez, en el PC, carpeta reconocimiento/)
+  1. Su cedula debe existir en la tabla conductores.
+  2. py capturar_esp.py --puerto COM6 --cedula 1001000001
+     (mira a la camara del ESP32-CAM y mueve un poco la cabeza; guarda 10 recortes)
+  3. py registrar.py --cedula 1001000001 --nombre "Nombre Apellido" --fotos fotos_esp\1001000001
+  4. Subir las huellas al servidor (en la EC2 de Jesus) y borrar el archivo de alli:
+       scp conductores_rostros.json ubuntu@100.30.209.115:~/huellas.json
+       ssh ubuntu@100.30.209.115 "python3 reconocimiento_facial.py --cargar huellas.json; rm huellas.json"
+  Registrarlo con el ESP32-CAM importa: con las huellas tomadas con la camara del portatil
+  la similitud fue 0,41-0,55 (no pasa el umbral 0,55); con las del ESP32-CAM, 0,93-0,94.
+  Las fotos y conductores_rostros.json son datos biometricos: NUNCA a GitHub (.gitignore).
+
+Limitaciones (para el informe de S5)
+  - Necesita senal en el celular: el reconocimiento lo hace el servidor.
+  - La camara GC2145 tiene foco fijo y la imagen sale algo borrosa; funciona bien a 40-60 cm.
+  - Solo la instancia de Jesus tiene OpenCV y los modelos (la app llama a su API).

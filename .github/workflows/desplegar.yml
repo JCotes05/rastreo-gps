@@ -41,6 +41,7 @@ jobs:
           scp -i ~/.ssh/clave.pem \
             servidor/basedatos.py servidor/listener.py servidor/servidor_web.py \
             servidor/rutas.py servidor/api_envios.py servidor/monitoreo.py servidor/eventos_carga.py \
+            servidor/reconocimiento_facial.py \
             web/index.html nginx/valentina.conf \
             ubuntu@${{ secrets.VALENTINA_IP }}:~/despliegue/
 
@@ -54,6 +55,7 @@ jobs:
             sudo cp ~/despliegue/api_envios.py ~/api_envios.py
             sudo cp ~/despliegue/monitoreo.py ~/monitoreo.py
             sudo cp ~/despliegue/eventos_carga.py ~/eventos_carga.py
+            sudo cp ~/despliegue/reconocimiento_facial.py ~/reconocimiento_facial.py
             sudo cp ~/despliegue/index.html /var/www/rastreo/index.html
             sudo cp ~/despliegue/valentina.conf /etc/nginx/sites-available/default
             sudo rm -f /etc/nginx/sites-enabled/default
@@ -86,8 +88,26 @@ jobs:
           scp -i ~/.ssh/clave.pem \
             servidor/basedatos.py servidor/listener.py servidor/servidor_web.py \
             servidor/rutas.py servidor/api_envios.py servidor/monitoreo.py servidor/eventos_carga.py \
+            servidor/reconocimiento_facial.py \
             web/index.html nginx/jesus.conf \
             ubuntu@${{ secrets.JESUS_IP }}:~/despliegue/
+
+      - name: Copiar los modelos de rostros (solo si cambiaron)
+        # P3-S3: solo esta instancia reconoce rostros (la app llama a su API). SFace pesa 38 MB,
+        # así que se sube únicamente si el archivo de la instancia es distinto.
+        run: |
+          ssh -i ~/.ssh/clave.pem ubuntu@${{ secrets.JESUS_IP }} "mkdir -p ~/modelos"
+          for modelo in reconocimiento/modelos/*.onnx; do
+            nombre=$(basename "$modelo")
+            local_sha=$(sha256sum "$modelo" | cut -d' ' -f1)
+            remoto_sha=$(ssh -i ~/.ssh/clave.pem ubuntu@${{ secrets.JESUS_IP }} "sha256sum ~/modelos/$nombre 2>/dev/null | cut -d' ' -f1")
+            if [ "$local_sha" != "$remoto_sha" ]; then
+              echo "Subiendo $nombre"
+              scp -i ~/.ssh/clave.pem "$modelo" ubuntu@${{ secrets.JESUS_IP }}:~/modelos/
+            else
+              echo "$nombre ya está al día"
+            fi
+          done
 
       - name: Instalar los archivos y reiniciar los servicios
         run: |
@@ -99,6 +119,7 @@ jobs:
             sudo cp ~/despliegue/api_envios.py ~/api_envios.py
             sudo cp ~/despliegue/monitoreo.py ~/monitoreo.py
             sudo cp ~/despliegue/eventos_carga.py ~/eventos_carga.py
+            sudo cp ~/despliegue/reconocimiento_facial.py ~/reconocimiento_facial.py
             sudo cp ~/despliegue/index.html /var/www/rastreo/index.html
             sudo cp ~/despliegue/jesus.conf /etc/nginx/sites-available/default
             sudo rm -f /etc/nginx/sites-enabled/default
@@ -131,6 +152,7 @@ jobs:
           scp -i ~/.ssh/clave.pem \
             servidor/basedatos.py servidor/listener.py servidor/servidor_web.py \
             servidor/rutas.py servidor/api_envios.py servidor/monitoreo.py servidor/eventos_carga.py \
+            servidor/reconocimiento_facial.py \
             web/index.html nginx/adrian.conf \
             ec2-user@${{ secrets.ADRIAN_IP }}:~/despliegue/
 
@@ -144,6 +166,7 @@ jobs:
             sudo cp ~/despliegue/api_envios.py ~/api_envios.py
             sudo cp ~/despliegue/monitoreo.py ~/monitoreo.py
             sudo cp ~/despliegue/eventos_carga.py ~/eventos_carga.py
+            sudo cp ~/despliegue/reconocimiento_facial.py ~/reconocimiento_facial.py
             sudo cp ~/despliegue/index.html /var/www/rastreo/index.html
             sudo cp ~/despliegue/adrian.conf /etc/nginx/nginx.conf
             sudo nginx -t
