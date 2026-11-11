@@ -16,6 +16,8 @@ Para la APP del camión (con "Authorization: Bearer <token>", salvo registro y l
   POST /api/camiones/ubicacion        {"lat", "lon"}  (cada minuto, mientras la app está abierta)
   GET  /api/camiones/viaje            envío asignado o en curso (?ruta=1 incluye la línea)
   POST /api/camiones/viaje/finalizar  termina el viaje en curso
+  POST /api/camiones/viaje/eventos    P3-S3: lote de eventos del ESP32 de sensores y su latido
+                                      (ver eventos_carga.py)
 
 Para la PÁGINA:
   GET  /api/catalogo                  configuraciones, carrocerías, tipos de carga y empaques
@@ -50,6 +52,7 @@ import psycopg2
 import psycopg2.errors
 import psycopg2.extras
 
+import eventos_carga  # P3-S3
 import rutas
 from basedatos import obtener_conexion
 
@@ -489,6 +492,9 @@ def _envio_json(cur, e, con_ruta=False, para_conductor=False):
         "puntos_control": puntos,
         "alertas": alertas,
         "conductor": conductor,
+        # P3-S3: eventos de la carga (frenadas, huecos, curvas, luz), conteo y estado de la carga.
+        # None si la base todavía no tiene p3s3.sql.
+        "sensores": eventos_carga.datos_de_carga(cur, e["id"]),
     }
     if not para_conductor:
         cur.execute(f"SELECT {COLUMNAS_CAMION} FROM camiones WHERE placa = %s", (e["placa"],))
@@ -629,12 +635,78 @@ def finalizar_viaje(p):
         if envio is None:
             raise ErrorAPI(409, "No tiene un viaje en curso para finalizar.")
         cur.execute("UPDATE envios SET estado = 'finalizado', finalizado_en = now() WHERE id = %s", (envio["id"],))
+        # Se cierran TODAS las alertas activas del envío: retraso, desvío y (P3-S3) carga abierta.
         cur.execute("UPDATE alertas SET fin = now() WHERE id_envio = %s AND fin IS NULL", (envio["id"],))
         nuevo = "no_disponible" if _documentos_vencidos(camion) else "disponible"
         cur.execute(f"UPDATE camiones SET estado = %s WHERE placa = %s RETURNING {COLUMNAS_CAMION}",
                     (nuevo, camion["placa"]))
         camion = cur.fetchone()
     return 200, {"viaje": None, "camion": _camion_json(camion, privado=True)}
+
+
+def eventos_del_viaje(p):
+    """
+    P3-S3. Cuerpo:
+      {"id_envio": 7,                                  (opcional; si no viene, el viaje abierto)
+       "eventos": [{"uid", "tipo", "valor", "lat", "lon", "momento"}, ...],
+       "latido": {"luz": "abierta"|"cerrada", "nivel": 35, "momento": ISO},   (opcional)
+       "posicion": {"lat", "lon"}}                     (opcional: último GPS, para eventos sin ubicación)
+    Responde qué uid se guardaron, cuáles ya estaban (reintento) y cuáles se rechazaron.
+    """
+    d = p.datos
+    lista = d.get("eventos", [])
+    if not isinstance(lista, list):
+        raise ErrorAPI(400, "eventos debe ser una lista.", "eventos")
+    if len(lista) > eventos_carga.MAX_EVENTOS_POR_LOTE:
+        raise ErrorAPI(413, f"Máximo {eventos_carga.MAX_EVENTOS_POR_LOTE} eventos por envío.", "eventos")
+    ahora = datetime.now(timezone.utc)
+    validos, rechazados = [], []
+    for item in lista:
+        try:
+            validos.append(eventos_carga.leer_evento(item, ahora))
+        except eventos_carga.EventoInvalido as error:
+            uid = item.get("uid") if isinstance(item, dict) and isinstance(item.get("uid"), str) else None
+            rechazados.append({"uid": uid, "error": str(error)})
+    latido = eventos_carga.leer_latido(d.get("latido"), ahora) if d.get("latido") is not None else None
+    if not lista and latido is None:
+        raise ErrorAPI(400, "No llegó ningún evento ni latido.", "eventos")
+    posicion = None
+    if isinstance(d.get("posicion"), dict):
+        lat, lon = _numero_en(d["posicion"].get("lat"), -90, 90), _numero_en(d["posicion"].get("lon"), -180, 180)
+        if lat is not None and lon is not None and (lat, lon) != (0.0, 0.0):
+            posicion = (lat, lon)
+    id_envio = d.get("id_envio")
+    if id_envio is not None and (isinstance(id_envio, bool) or not isinstance(id_envio, int) or id_envio <= 0):
+        raise ErrorAPI(400, "id_envio debe ser un número entero.", "id_envio")
+
+    with _bd() as cur:
+        camion = _camion_autenticado(cur, p.autorizacion)
+        if id_envio is not None:
+            # Puede ser un viaje ya terminado: la app manda lo que tenía en cola cuando vuelve la señal.
+            cur.execute(f"SELECT {COLUMNAS_ENVIO} FROM envios WHERE id = %s AND placa = %s FOR UPDATE",
+                        (id_envio, camion["placa"]))
+            envio = cur.fetchone()
+            if envio is None:
+                raise ErrorAPI(404, "Ese envío no existe o no es de este camión.", "id_envio")
+        else:
+            envio = _envio_abierto_de(cur, camion["placa"], bloquear=True)
+            if envio is None:
+                raise ErrorAPI(409, "No tiene un viaje asignado ni en curso.")
+        ruta = None
+        if any(ev["lat"] is not None for ev in validos) or (posicion and validos):
+            cur.execute("SELECT ruta FROM envios WHERE id = %s", (envio["id"],))
+            ruta = cur.fetchone()["ruta"]
+        try:
+            guardados, repetidos, avisos = eventos_carga.registrar(cur, envio, validos, latido, ruta, posicion)
+        except (psycopg2.errors.UndefinedTable, psycopg2.errors.UndefinedColumn):
+            raise ErrorAPI(503, "La base de datos todavía no tiene P3-S3 (falta ejecutar sql/p3s3.sql).") from None
+        sensores = eventos_carga.datos_de_carga(cur, envio["id"])
+        cur.execute("SELECT 1 FROM alertas WHERE id_envio = %s AND tipo = 'carga_abierta' AND fin IS NULL", (envio["id"],))
+        carga_abierta = cur.fetchone() is not None
+    for aviso in avisos:
+        print(f"[ENV-{envio['id']:04d}] {aviso}", flush=True)
+    return 200, {"id_envio": envio["id"], "estado": envio["estado"], "guardados": guardados, "repetidos": repetidos,
+                 "rechazados": rechazados, "alerta_carga_abierta": carga_abierta, "sensores": sensores}
 
 
 # ---------------------------------------------------------------------
@@ -900,6 +972,7 @@ _RUTAS = [
     ("POST", r"/api/camiones/ubicacion", actualizar_ubicacion),
     ("GET",  r"/api/camiones/viaje", viaje_actual),
     ("POST", r"/api/camiones/viaje/finalizar", finalizar_viaje),
+    ("POST", r"/api/camiones/viaje/eventos", eventos_del_viaje),      # P3-S3
     ("GET",  r"/api/camiones", flota),
     ("GET",  r"/api/catalogo", catalogo),
     ("POST", r"/api/envios/cotizar", cotizar_envio),

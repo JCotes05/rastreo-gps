@@ -123,6 +123,10 @@ class MainActivity : ComponentActivity() {
     private var verificarAlElegir = false          // el selector se abrió al tocar el botón principal
     private var trabajoVerificacion: Job? = null
 
+    // P3-S3: ESP32 de sensores de la carga
+    private var sensoresElegido by mutableStateOf<EquipoBluetooth?>(null)
+    private var mostrarSelectorSensores by mutableStateOf(false)
+
     // P3-S2: sesión del camión y viaje
     private var token by mutableStateOf<String?>(null)
     private var camion by mutableStateOf<Camion?>(null)
@@ -161,11 +165,12 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    // Solo el permiso de Bluetooth (para "Cambiar computador" cuando aún no se ha dado).
+    // Solo el permiso de Bluetooth (para "Cambiar equipo" cuando aún no se ha dado).
+    private var selectorTrasPermiso: () -> Unit = {}
     private val permisoBluetoothLauncher = registerForActivityResult(
         ActivityResultContracts.RequestPermission()
     ) { concedido ->
-        if (concedido) abrirSelector(verificarDespues = false)
+        if (concedido) selectorTrasPermiso()
     }
 
     // Ventana del sistema "¿Activar Bluetooth?".
@@ -177,7 +182,7 @@ class MainActivity : ComponentActivity() {
         } else {
             fase = FaseVerificacion.Fallida(
                 "Bluetooth apagado",
-                "Sin Bluetooth el celular no puede hablar con el computador de reconocimiento."
+                "Sin Bluetooth el celular no puede hablar con el equipo de reconocimiento."
             )
         }
     }
@@ -186,6 +191,7 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         configurarBarrasDelSistema()
         pcElegido = VerificacionConductor.pcGuardado(this)
+        sensoresElegido = Sensores.guardado(this)
         token = Sesion.token(this)
         camion = if (token != null) Sesion.camionGuardado(this) else null
 
@@ -208,6 +214,16 @@ class MainActivity : ComponentActivity() {
                     while (true) {
                         latido()
                         delay(Config.LATIDO_MS)
+                    }
+                }
+                // P3-S3: eventos de la carga que quedaron en cola (sin señal al final del viaje).
+                // Mientras se transmite, los sube el servicio; aquí solo lo que sobró.
+                launch {
+                    while (true) {
+                        delay(30_000L)
+                        if (token != null && !EstadoTransmision.activa && ColaEventos.cantidad(this@MainActivity) > 0) {
+                            ColaEventos.vaciar(this@MainActivity)
+                        }
                     }
                 }
             }
@@ -269,6 +285,7 @@ class MainActivity : ComponentActivity() {
                 cambiandoDisponibilidad = cambiandoDisponibilidad,
                 finalizando = finalizando,
                 pcNombre = pcElegido?.nombre,
+                sensoresNombre = sensoresElegido?.nombre,
                 acciones = acciones
             )
         }
@@ -287,6 +304,20 @@ class MainActivity : ComponentActivity() {
                 }
             )
         }
+        if (mostrarSelectorSensores) {
+            SelectorDeComputador(
+                equipos = equiposVinculados,
+                titulo = "Sensores de la carga",
+                ayuda = "Elige el ESP32 de sensores (por ejemplo \"Orbita-Sensores\"). Se conecta solo al iniciar " +
+                        "un viaje. Sin sensores, el viaje funciona igual.",
+                sinEquipos = "No hay equipos vinculados. En los ajustes de Bluetooth del celular, vincula el ESP32 " +
+                        "de sensores (\"Orbita-Sensores\") y vuelve a intentarlo.",
+                textoQuitar = if (sensoresElegido != null) "No usar sensores" else null,
+                onQuitar = { elegirSensores(null) },
+                onElegir = { elegirSensores(it) },
+                onCerrar = { mostrarSelectorSensores = false }
+            )
+        }
     }
 
     private val acciones = AccionesCamion(
@@ -301,6 +332,7 @@ class MainActivity : ComponentActivity() {
         },
         onActualizar = { token?.let { t -> lifecycleScope.launch { consultarViaje(t) } } },
         onCambiarPc = { cambiarComputador() },
+        onCambiarSensores = { cambiarSensores() },
         onCerrarSesion = { cerrarSesion() },
         onCerrarAviso = { aviso = null },
         onLlamar = { numero ->
@@ -668,7 +700,7 @@ class MainActivity : ComponentActivity() {
         if (!VerificacionConductor.tienePermiso(this)) {
             fase = FaseVerificacion.Fallida(
                 "Falta el permiso de Bluetooth",
-                "Sin el permiso de \"Dispositivos cercanos\" la app no puede pedirle al computador " +
+                "Sin el permiso de \"Dispositivos cercanos\" la app no puede pedirle al equipo de reconocimiento " +
                         "que reconozca al conductor. Puedes darlo en los ajustes de la app."
             )
             return
@@ -731,10 +763,40 @@ class MainActivity : ComponentActivity() {
     private fun cambiarComputador() {
         val permiso = VerificacionConductor.permisoNecesario()
         if (permiso != null && !VerificacionConductor.tienePermiso(this)) {
+            selectorTrasPermiso = { abrirSelector(verificarDespues = false) }
             permisoBluetoothLauncher.launch(permiso)
         } else {
             abrirSelector(verificarDespues = false)
         }
+    }
+
+    // ---------------------------------------------------------------
+    //  P3-S3 · ESP32 de sensores de la carga
+    // ---------------------------------------------------------------
+    private fun cambiarSensores() {
+        val permiso = VerificacionConductor.permisoNecesario()
+        if (permiso != null && !VerificacionConductor.tienePermiso(this)) {
+            selectorTrasPermiso = { cambiarSensores() }
+            permisoBluetoothLauncher.launch(permiso)
+            return
+        }
+        equiposVinculados = VerificacionConductor.equiposVinculados(this)
+        mostrarSelectorSensores = true
+    }
+
+    private fun elegirSensores(equipo: EquipoBluetooth?) {
+        Sensores.guardar(this, equipo)
+        sensoresElegido = equipo
+        mostrarSelectorSensores = false
+        // En pleno viaje: el servicio se conecta (o se desconecta) de una vez.
+        if (EstadoTransmision.activa && EstadoTransmision.envioId != null) {
+            TransmisionService.reconectarSensores(this)
+        }
+        mostrarAviso(
+            if (equipo == null) "Sin sensores de la carga: el viaje funciona igual, solo con el GPS."
+            else "Sensores de la carga: ${equipo.nombre}. Se conectan al iniciar el viaje.",
+            error = false
+        )
     }
 
     private fun abrirSelector(verificarDespues: Boolean) {
@@ -946,7 +1008,7 @@ fun PantallaPrincipal(
                 }
                 verificando -> {
                     Text(
-                        text = "La cámara del computador debe ver tu cara de frente y con buena luz. " +
+                        text = "La cámara del equipo de reconocimiento debe ver tu cara de frente y con buena luz. " +
                                 "Toca el botón para cancelar.",
                         fontFamily = Manrope,
                         fontWeight = FontWeight.SemiBold,
@@ -994,7 +1056,7 @@ fun PantallaPrincipal(
             } else if (!verificando) {
                 // Computador de reconocimiento elegido (se puede cambiar).
                 Text(
-                    text = "Computador de reconocimiento: ${pcNombre ?: "sin elegir"}  ·  Cambiar",
+                    text = "Equipo de reconocimiento (computador o ESP32-CAM): ${pcNombre ?: "sin elegir"}  ·  Cambiar",
                     fontFamily = Manrope,
                     fontWeight = FontWeight.SemiBold,
                     fontSize = 12.sp,
@@ -1270,12 +1332,22 @@ internal fun TarjetaVerificacionFallida(detalle: String, onReintentar: () -> Uni
     }
 }
 
-/** P3-S1: lista de equipos vinculados por Bluetooth para elegir el computador de reconocimiento. */
+/**
+ * Lista de equipos vinculados por Bluetooth para elegir uno.
+ * P3-S1: el equipo de reconocimiento (computador o ESP32-CAM). P3-S3: también el ESP32 de sensores.
+ */
 @Composable
 private fun SelectorDeComputador(
     equipos: List<EquipoBluetooth>,
     onElegir: (EquipoBluetooth) -> Unit,
-    onCerrar: () -> Unit
+    onCerrar: () -> Unit,
+    titulo: String = "Elige el equipo de reconocimiento",
+    ayuda: String = "Equipos vinculados por Bluetooth. Elige el computador (o ESP32-CAM) que tiene corriendo " +
+            "el reconocimiento facial.",
+    sinEquipos: String = "No hay equipos vinculados. En los ajustes de Bluetooth del celular, vincula el " +
+            "equipo de reconocimiento (computador o ESP32-CAM) y vuelve a intentarlo.",
+    textoQuitar: String? = null,
+    onQuitar: () -> Unit = {}
 ) {
     AlertDialog(
         onDismissRequest = onCerrar,
@@ -1284,14 +1356,20 @@ private fun SelectorDeComputador(
                 Text("Cancelar", fontFamily = Manrope, fontWeight = FontWeight.ExtraBold, color = CianMarca)
             }
         },
+        dismissButton = if (textoQuitar != null) {
+            {
+                TextButton(onClick = onQuitar) {
+                    Text(textoQuitar, fontFamily = Manrope, fontWeight = FontWeight.ExtraBold, color = NaranjaMarca)
+                }
+            }
+        } else null,
         title = {
-            Text("Elige el computador", fontFamily = Manrope, fontWeight = FontWeight.ExtraBold)
+            Text(titulo, fontFamily = Manrope, fontWeight = FontWeight.ExtraBold)
         },
         text = {
             if (equipos.isEmpty()) {
                 Text(
-                    text = "No hay equipos vinculados. En los ajustes de Bluetooth del celular, vincula el " +
-                            "computador de reconocimiento y vuelve a intentarlo.",
+                    text = sinEquipos,
                     fontFamily = Manrope,
                     fontWeight = FontWeight.SemiBold,
                     fontSize = 14.sp
@@ -1303,7 +1381,7 @@ private fun SelectorDeComputador(
                         .verticalScroll(rememberScrollState())
                 ) {
                     Text(
-                        text = "Equipos vinculados por Bluetooth. Elige el que tiene corriendo el servicio de reconocimiento.",
+                        text = ayuda,
                         fontFamily = Manrope,
                         fontWeight = FontWeight.SemiBold,
                         fontSize = 13.sp,

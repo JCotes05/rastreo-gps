@@ -41,6 +41,12 @@
   }
   @keyframes onda { from { transform: scale(1); opacity: 0.9; } to { transform: scale(3.4); opacity: 0; } }
 
+  /* P3-S3: eventos de la carga (los mismos de la página web) */
+  .ev { width: 22px; height: 22px; border-radius: 50%; border: 2px solid #fff; box-sizing: border-box;
+        display: flex; align-items: center; justify-content: center; color: #fff; font-size: 11px; font-weight: 800;
+        box-shadow: 0 1px 5px rgba(11, 31, 58, 0.45); }
+  .ev.luz_cerrada { width: 16px; height: 16px; font-size: 9px; }
+
   .alerta div {
     width: 26px; height: 26px; border-radius: 50%; background: #C62828; color: #fff; border: 2px solid #fff;
     display: flex; align-items: center; justify-content: center; font-size: 13px; box-shadow: 0 2px 6px rgba(0, 0, 0, 0.35);
@@ -103,6 +109,16 @@
   var capaRuta = L.layerGroup().addTo(mapa);
   var capaPuntos = L.layerGroup().addTo(mapa);
   var capaAlertas = L.layerGroup().addTo(mapa);
+  var capaEventos = L.layerGroup().addTo(mapa);
+  var firmaEventos = '';
+  // P3-S3: cómo se dibuja cada evento de la carga (igual que en la página)
+  var EVENTO = {
+    frenada:     { letra: 'F', color: '#E4572E', nombre: 'Frenada brusca' },
+    hueco:       { letra: 'H', color: '#8D6E63', nombre: 'Hueco' },
+    curva:       { letra: 'C', color: '#7E57C2', nombre: 'Curva brusca' },
+    luz_abierta: { letra: '☀', color: '#D49100', nombre: 'Carga abierta' },
+    luz_cerrada: { letra: '●', color: '#5C6B80', nombre: 'Carga cerrada' }
+  };
 
   var ruta = null;              // { puntos: [[lat, lon]...], dist_m: [...] }
   var lineaPasada = null, lineaFalta = null, contorno = null;
@@ -221,7 +237,27 @@
         activas.forEach(function (a) {
           L.marker([a.lat, a.lon], { icon: L.divIcon({ className: 'alerta', iconSize: [26, 26], iconAnchor: [13, 13], html: '<div>&#9888;</div>' }),
                                      zIndexOffset: 300 })
-            .bindPopup(a.tipo === 'desvio' ? '<b>Desvío</b><br>Aquí se salió de la ruta' : '<b>Retraso</b>').addTo(capaAlertas);
+            .bindPopup(a.tipo === 'desvio' ? '<b>Desvío</b><br>Aquí se salió de la ruta'
+                       : a.tipo === 'carga_abierta' ? '<b>Carga abierta</b><br>Aquí se abrió la carga en plena ruta'
+                       : '<b>Retraso</b>').addTo(capaAlertas);
+        });
+      }
+
+      // P3-S3: eventos de la carga sobre la ruta (si el servidor no los manda, no se dibuja nada)
+      var eventos = ((v.sensores && v.sensores.eventos) || []).filter(function (e) { return e.lat != null && e.lon != null && EVENTO[e.tipo]; });
+      var firmaE = JSON.stringify(eventos.map(function (e) { return e.id; }));
+      if (firmaE !== firmaEventos) {
+        firmaEventos = firmaE;
+        capaEventos.clearLayers();
+        eventos.forEach(function (e) {
+          var t = EVENTO[e.tipo], lado = e.tipo === 'luz_cerrada' ? 16 : 22;
+          var valor = e.valor == null ? '' : (e.tipo.indexOf('luz') === 0 ? 'Luz ' + Math.round(e.valor) : String(e.valor).replace('.', ',') + ' g');
+          L.marker([e.lat, e.lon], { zIndexOffset: 150,
+            icon: L.divIcon({ className: 'marca', iconSize: [lado, lado], iconAnchor: [lado / 2, lado / 2],
+                              html: '<div class="ev ' + e.tipo + '" style="background:' + t.color + '">' + t.letra + '</div>' }) })
+            .bindPopup('<b>' + t.nombre + '</b>' + (valor ? ' · ' + valor : '') + '<br><span class="gris">' + hora(e.momento) +
+                       (e.avance_m != null ? ' · km ' + km(e.avance_m) : '') + '</span>')
+            .addTo(capaEventos);
         });
       }
       if (!encuadrado && !seguir) { encuadrar(); }

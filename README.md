@@ -9,19 +9,22 @@ SSH para actualizar el código en producción.
 
 ```
 servidor/       → basedatos.py, listener.py, servidor_web.py, ver_registros.py,
-                   rutas.py, api_envios.py, monitoreo.py (P3-S2)
+                   rutas.py, api_envios.py, monitoreo.py (P3-S2),
+                   eventos_carga.py (P3-S3: eventos del ESP32 de sensores)
 web/             → index.html (la página, servida como archivo estático por Nginx)
 nginx/           → un archivo de configuración POR INSTANCIA (dominios y
                    certificados SSL distintos, no pueden ser un solo archivo)
 systemd/         → los .service (Ubuntu y Amazon Linux)
 android/         → proyecto completo de la app (Android Studio, Kotlin + Compose)
 reconocimiento/  → reconocimiento facial del conductor en el PC (P3-S1, ver LEEME.txt)
-pruebas/         → pruebas automáticas y simulador_gps.py
-sql/             → tablas del P3-S2 y limpieza de datos de prueba
+                   y simulador_esp_sensores.py (P3-S3: el PC hace de ESP32 por Bluetooth)
+firmware/        → esp32_sensores/ (P3-S3: borrador para el ESP32 DevKit, ver LEEME.txt)
+pruebas/         → pruebas automáticas, simulador_gps.py y simulador_sensores.py
+sql/             → tablas del P3-S2 y P3-S3 y limpieza de datos de prueba
 .github/workflows/desplegar.yml → el flujo de despliegue automático
 ```
 
-`android/` y `reconocimiento/` **no se despliegan** a las instancias: el
+`android/`, `reconocimiento/` y `firmware/` **no se despliegan** a las instancias: el
 flujo solo copia los archivos de `servidor/`, `web/` y `nginx/`.
 
 - **App:** abrir la carpeta `android/` en Android Studio, o compilar con

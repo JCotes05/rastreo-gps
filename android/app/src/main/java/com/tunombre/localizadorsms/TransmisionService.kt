@@ -101,6 +101,7 @@ class TransmisionService : Service() {
     companion object {
         const val ACCION_INICIAR = "com.tunombre.localizadorsms.INICIAR"
         const val ACCION_DETENER = "com.tunombre.localizadorsms.DETENER"
+        const val ACCION_SENSORES = "com.tunombre.localizadorsms.SENSORES"
 
         private const val CANAL_ID = "transmision_ubicacion"
         private const val NOTIFICACION_ID = 1001
@@ -143,6 +144,16 @@ class TransmisionService : Service() {
         fun detener(contexto: Context) {
             contexto.stopService(Intent(contexto, TransmisionService::class.java))
         }
+
+        // P3-S3: se eligió (o cambió) el ESP de sensores en pleno viaje: el servicio se reconecta.
+        // Solo se llama con la app a la vista y el servicio ya corriendo.
+        fun reconectarSensores(contexto: Context) {
+            try {
+                contexto.startService(Intent(contexto, TransmisionService::class.java).setAction(ACCION_SENSORES))
+            } catch (e: Exception) {
+                // el servicio no está corriendo o el sistema no lo permite: se conectará al reanudar
+            }
+        }
     }
 
     private lateinit var fusedLocationClient: FusedLocationProviderClient
@@ -152,6 +163,7 @@ class TransmisionService : Service() {
     private var cedulaConductor: String? = null      // P3-S1: viaja en cada paquete
     private var nombreConductor: String? = null      //        se muestra en la notificación
     private var idEnvio: Int? = null                 // P3-S2: viaja en cada paquete como ENVIO:<id>
+    private var trabajoSensores: Job? = null         // P3-S3: conexión con el ESP32 de sensores de la carga
 
     override fun onCreate() {
         super.onCreate()
@@ -165,6 +177,18 @@ class TransmisionService : Service() {
         // Botón "Detener" de la notificación.
         if (intent?.action == ACCION_DETENER) {
             stopSelf()                       // onDestroy se encarga de la limpieza
+            return START_NOT_STICKY
+        }
+
+        // P3-S3: cambiaron el ESP de sensores en pleno viaje.
+        if (intent?.action == ACCION_SENSORES) {
+            if (bucle?.isActive == true) {
+                trabajoSensores?.cancel()
+                trabajoSensores = null
+                iniciarSensores()
+                return START_STICKY
+            }
+            stopSelf()
             return START_NOT_STICKY
         }
 
@@ -228,11 +252,24 @@ class TransmisionService : Service() {
 
         tomarWakeLock()
         iniciarBucle(idRecorrido)
+        iniciarSensores()
         return START_STICKY
+    }
+
+    // P3-S3: si el viaje tiene envío y hay un ESP de sensores elegido, se conecta durante todo el viaje.
+    // Si no hay ESP o no responde, el viaje sigue igual (GPS, monitoreo y alertas de S2).
+    private fun iniciarSensores() {
+        val envio = idEnvio ?: return
+        val equipo = Sensores.guardado(this) ?: return
+        if (trabajoSensores?.isActive == true) return
+        trabajoSensores = scope.launch {
+            ConexionSensores(applicationContext, equipo.direccion, envio).correr()
+        }
     }
 
     override fun onDestroy() {
         bucle?.cancel()
+        trabajoSensores?.cancel()            // le manda FIN al ESP y cierra el Bluetooth
         scope.cancel()
         soltarWakeLock()
         getSharedPreferences(PREFS, MODE_PRIVATE).edit().putBoolean(PREF_ACTIVA, false).apply()
@@ -307,6 +344,8 @@ class TransmisionService : Service() {
                 (velocidad?.let { ",VEL:$it" } ?: "")
 
         val (ok, detalle) = enviarUDP(Config.IP_SERVIDOR, Config.PUERTO, mensaje)
+        // P3-S3: los eventos de la carga se ubican con la última posición del GPS.
+        EstadoSensores.ultimaPosicion = ubicacion.latitude to ubicacion.longitude
         if (ok) {
             EstadoTransmision.posicion = ubicacion.latitude to ubicacion.longitude
             publicarExito()

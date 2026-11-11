@@ -70,6 +70,10 @@ object ApiOrbita {
     suspend fun finalizar(token: String): Respuesta =
         pedir("POST", "/api/camiones/viaje/finalizar", JSONObject(), token)
 
+    /** P3-S3: lote de eventos del ESP32 de sensores (y su latido). Ver SensoresCarga.kt. */
+    suspend fun eventos(token: String, cuerpo: JSONObject): Respuesta =
+        pedir("POST", "/api/camiones/viaje/eventos", cuerpo, token)
+
     // ---------------------------------------------------------------
     //  Un pedido HTTP (en segundo plano; la red no se usa en el hilo principal)
     // ---------------------------------------------------------------
@@ -232,6 +236,32 @@ data class PuntoControl(
 
 data class AlertaViaje(val id: Int, val tipo: String, val activa: Boolean, val valorMax: Double?)
 
+/** P3-S3: lo que el servidor sabe de los sensores de la carga de este viaje (null = servidor sin P3-S3). */
+data class SensoresViaje(
+    val frenadas: Int,
+    val huecos: Int,
+    val curvas: Int,
+    val cargaEstado: String?,           // abierta | cerrada | null (sin datos)
+    val enLinea: Boolean,
+    val haceS: Int?
+) {
+    companion object {
+        fun desde(j: JSONObject?): SensoresViaje? {
+            if (j == null) return null
+            val conteo = j.optJSONObject("conteo") ?: JSONObject()
+            val carga = j.optJSONObject("carga") ?: JSONObject()
+            return SensoresViaje(
+                frenadas = conteo.optInt("frenada", 0),
+                huecos = conteo.optInt("hueco", 0),
+                curvas = conteo.optInt("curva", 0),
+                cargaEstado = carga.texto("estado"),
+                enLinea = carga.optBoolean("en_linea", false),
+                haceS = carga.entero("hace_s")
+            )
+        }
+    }
+}
+
 data class Viaje(
     val id: Int,
     val codigo: String,
@@ -264,10 +294,12 @@ data class Viaje(
     val puntos: List<PuntoControl>,
     val alertas: List<AlertaViaje>,
     val conductor: String?,
+    val sensores: SensoresViaje?,       // P3-S3
     val json: JSONObject                // tal como llegó (el mapa lo usa entero)
 ) {
     val desvioActivo: AlertaViaje? get() = alertas.firstOrNull { it.activa && it.tipo == "desvio" }
     val retrasoActivo: AlertaViaje? get() = alertas.firstOrNull { it.activa && it.tipo == "retraso" }
+    val cargaAbiertaActiva: AlertaViaje? get() = alertas.firstOrNull { it.activa && it.tipo == "carga_abierta" }
     val proximoPunto: PuntoControl? get() = puntos.firstOrNull { it.horaReal == null }
     val puntosDeControl: Int get() = puntos.count { it.tipo == "control" }
 
@@ -330,6 +362,7 @@ data class Viaje(
                     )
                 },
                 conductor = j.optJSONObject("conductor")?.texto("nombre"),
+                sensores = SensoresViaje.desde(j.optJSONObject("sensores")),
                 json = j
             )
         }

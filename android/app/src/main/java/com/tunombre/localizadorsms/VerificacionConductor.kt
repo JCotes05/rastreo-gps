@@ -45,8 +45,8 @@ data class EquipoBluetooth(val nombre: String, val direccion: String)
 object VerificacionConductor {
 
     // UUID estándar del "puerto serie" Bluetooth (SPP). Es el que publica el puerto COM
-    // entrante de Windows, y el mismo que usarán después el ESP32 y el ESP32-CAM.
-    private val UUID_SPP: UUID = UUID.fromString("00001101-0000-1000-8000-00805F9B34FB")
+    // entrante de Windows, y el mismo que usan el ESP32 de sensores y el ESP32-CAM (P3-S3).
+    internal val UUID_SPP: UUID = UUID.fromString("00001101-0000-1000-8000-00805F9B34FB")
 
     // Conexión + identificación. El computador responde en máximo ~10 s; esto es el colchón.
     private const val TIEMPO_MAXIMO_MS = 25_000L
@@ -129,7 +129,7 @@ object VerificacionConductor {
         val equipo = try {
             adaptador.getRemoteDevice(direccion)
         } catch (e: IllegalArgumentException) {
-            return ResultadoVerificacion.Fallo("La dirección guardada del computador no es válida. Elígelo de nuevo.")
+            return ResultadoVerificacion.Fallo("La dirección guardada del equipo de reconocimiento no es válida. Elígelo de nuevo.")
         }
 
         tiempoAgotado = false
@@ -144,10 +144,10 @@ object VerificacionConductor {
                 withContext(Dispatchers.IO) { conversar(equipo, onAvance) }
             } catch (e: IOException) {
                 if (tiempoAgotado) {
-                    ResultadoVerificacion.Fallo("El computador no respondió a tiempo.")
+                    ResultadoVerificacion.Fallo("El equipo de reconocimiento no respondió a tiempo.")
                 } else {
                     ResultadoVerificacion.Fallo(
-                        "No se pudo conectar con el computador. Revisa que esté encendido, cerca, " +
+                        "No se pudo conectar con el equipo de reconocimiento (computador o ESP32-CAM). Revisa que esté encendido, cerca, " +
                                 "con el Bluetooth activo y con el servicio de reconocimiento corriendo."
                     )
                 }
@@ -168,30 +168,30 @@ object VerificacionConductor {
 
         salida.write("IDENTIFICAR\n".toByteArray(Charsets.UTF_8))
         salida.flush()
-        avisar(onAvance, "Esperando al computador…")
+        avisar(onAvance, "Esperando al equipo de reconocimiento…")
 
         var linea = entrada.readLine()
         while (linea != null) {
             val (tipo, campos) = interpretar(linea)
             when (tipo) {
-                "IDENTIFICANDO" -> avisar(onAvance, "Mira de frente a la cámara del computador…")
+                "IDENTIFICANDO" -> avisar(onAvance, "Mira de frente a la cámara del equipo de reconocimiento…")
                 "CONDUCTOR" -> {
                     val cedula = campos["CED"].orEmpty()
                     if (!PATRON_CEDULA.matches(cedula)) {
-                        return ResultadoVerificacion.Fallo("El computador mandó una cédula inválida.")
+                        return ResultadoVerificacion.Fallo("El equipo de reconocimiento mandó una cédula inválida.")
                     }
                     val nombre = campos["NOM"]?.takeIf { it.isNotBlank() } ?: cedula
                     return ResultadoVerificacion.Reconocido(cedula, nombre, campos["SIM"]?.toFloatOrNull() ?: 0f)
                 }
                 "NO_RECONOCIDO" -> return ResultadoVerificacion.NoReconocido(campos["SIM"]?.toFloatOrNull() ?: 0f)
                 "ERROR" -> return ResultadoVerificacion.Fallo(
-                    "El computador respondió: ${campos["MOTIVO"] ?: "error desconocido"}."
+                    "El equipo de reconocimiento respondió: ${campos["MOTIVO"] ?: "error desconocido"}."
                 )
                 // PONG u otros mensajes: se ignoran y se sigue esperando.
             }
             linea = entrada.readLine()
         }
-        return ResultadoVerificacion.Fallo("El computador cerró la conexión sin responder.")
+        return ResultadoVerificacion.Fallo("El equipo de reconocimiento cerró la conexión sin responder.")
     }
 
     @SuppressLint("MissingPermission")
