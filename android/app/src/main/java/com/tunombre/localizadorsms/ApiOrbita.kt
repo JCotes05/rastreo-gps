@@ -56,6 +56,11 @@ object ApiOrbita {
         return pedir("POST", "/api/camiones/disponibilidad", cuerpo, token)
     }
 
+    /** El conductor renovó el SOAT o la técnico-mecánica (fechas AAAA-MM-DD). */
+    suspend fun documentos(token: String, soatVence: String, tecnomecanicaVence: String): Respuesta =
+        pedir("POST", "/api/camiones/documentos",
+            JSONObject().put("soat_vence", soatVence).put("tecnomecanica_vence", tecnomecanicaVence), token)
+
     suspend fun ubicacion(token: String, lat: Double, lon: Double): Respuesta =
         pedir("POST", "/api/camiones/ubicacion", JSONObject().put("lat", lat).put("lon", lon), token)
 

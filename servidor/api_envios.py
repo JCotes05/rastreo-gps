@@ -13,6 +13,7 @@ Para la APP del camión (con "Authorization: Bearer <token>", salvo registro y l
   POST /api/camiones/logout           cierra la sesión
   GET  /api/camiones/yo               datos del camión
   POST /api/camiones/disponibilidad   {"disponible": true|false, "lat", "lon"}
+  POST /api/camiones/documentos       {"soat_vence", "tecnomecanica_vence"}  (AAAA-MM-DD)
   POST /api/camiones/ubicacion        {"lat", "lon"}  (cada minuto, mientras la app está abierta)
   GET  /api/camiones/viaje            envío asignado o en curso (?ruta=1 incluye la línea)
   POST /api/camiones/viaje/finalizar  termina el viaje en curso
@@ -609,6 +610,32 @@ def cambiar_disponibilidad(p):
     return 200, {"camion": _camion_json(camion, privado=True)}
 
 
+def actualizar_documentos(p):
+    """
+    El conductor renovó el SOAT o la técnico-mecánica: cambia las dos fechas de vencimiento.
+    Cuerpo: {"soat_vence": "AAAA-MM-DD", "tecnomecanica_vence": "AAAA-MM-DD"}.
+    Si el camión quedó 'no_disponible' por documentos vencidos, el conductor ya puede activar "Disponible".
+    """
+    hoy = _hoy()
+    limite = hoy + timedelta(days=3 * 365)
+    fechas = {}
+    for campo, nombre in (("soat_vence", "el vencimiento del SOAT"),
+                          ("tecnomecanica_vence", "el vencimiento de la técnico-mecánica")):
+        fecha = _fecha(p.datos, campo, nombre)
+        if fecha < hoy:
+            raise ErrorAPI(400, f"{_m(nombre)} ya pasó: escriba la fecha del documento renovado.", campo)
+        if fecha > limite:
+            raise ErrorAPI(400, f"{_m(nombre)} no puede ser más de 3 años después de hoy.", campo)
+        fechas[campo] = fecha
+    with _bd() as cur:
+        camion = _camion_autenticado(cur, p.autorizacion, bloquear=True)
+        cur.execute(f"""UPDATE camiones SET soat_vence = %s, tecnomecanica_vence = %s WHERE placa = %s
+                        RETURNING {COLUMNAS_CAMION}""",
+                    (fechas["soat_vence"], fechas["tecnomecanica_vence"], camion["placa"]))
+        camion = cur.fetchone()
+    return 200, {"camion": _camion_json(camion, privado=True)}
+
+
 def actualizar_ubicacion(p):
     lat, lon = _lat_lon(p.datos)
     with _bd() as cur:
@@ -1059,6 +1086,7 @@ _RUTAS = [
     ("GET",  r"/api/camiones/yo", datos_del_camion),
     ("POST", r"/api/camiones/disponibilidad", cambiar_disponibilidad),
     ("POST", r"/api/camiones/ubicacion", actualizar_ubicacion),
+    ("POST", r"/api/camiones/documentos", actualizar_documentos),
     ("GET",  r"/api/camiones/viaje", viaje_actual),
     ("POST", r"/api/camiones/viaje/finalizar", finalizar_viaje),
     ("POST", r"/api/camiones/viaje/eventos", eventos_del_viaje),      # P3-S3

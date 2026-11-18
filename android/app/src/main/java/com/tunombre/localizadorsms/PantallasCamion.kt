@@ -704,6 +704,7 @@ private fun FormularioRegistro(
 /** Lo que pueden hacer los botones de estas pantallas (lo implementa MainActivity). */
 class AccionesCamion(
     val onDisponible: (Boolean) -> Unit,
+    val onDocumentos: (soatVence: String, tecnomecanicaVence: String, alTerminar: (String?) -> Unit) -> Unit,
     val onBotonViaje: () -> Unit,          // iniciar/reanudar (verifica primero) o cancelar la verificación
     val onSinVerificar: () -> Unit,
     val onFinalizar: () -> Unit,
@@ -889,7 +890,7 @@ private fun ContenidoEspera(
             }
         }
 
-        TarjetaDelCamion(camion)
+        TarjetaDelCamion(camion, acciones)
 
         Text(
             "Transmitir sin viaje (solo rastreo, como en S1)",
@@ -940,7 +941,8 @@ private fun RadarEspera(activo: Boolean) {
 }
 
 @Composable
-private fun TarjetaDelCamion(camion: Camion) {
+private fun TarjetaDelCamion(camion: Camion, acciones: AccionesCamion) {
+    var editando by rememberSaveable { mutableStateOf(false) }
     TarjetaOrbita {
         Etiqueta("Tu camión")
         TextoFuerte(camion.placa, tamano = 24.sp, modifier = Modifier.padding(top = 2.dp))
@@ -955,7 +957,62 @@ private fun TarjetaDelCamion(camion: Camion) {
         if (camion.propietario != null) {
             TextoSuave("Dueño: ${camion.propietario}", modifier = Modifier.padding(top = 8.dp))
         }
+        Spacer(modifier = Modifier.height(12.dp))
+        BotonSecundario(
+            "Actualizar documentos",
+            color = if (camion.documentosVigentes) Claro else NaranjaMarca
+        ) { editando = true }
     }
+    if (editando) {
+        DialogoDocumentos(camion, acciones, onCerrar = { editando = false })
+    }
+}
+
+/** Cambiar las fechas de vencimiento del SOAT y de la técnico-mecánica (cuando el conductor los renueva). */
+@Composable
+private fun DialogoDocumentos(camion: Camion, acciones: AccionesCamion, onCerrar: () -> Unit) {
+    var soat by rememberSaveable { mutableStateOf(camion.soatVence.take(10)) }
+    var tecno by rememberSaveable { mutableStateOf(camion.tecnomecanicaVence.take(10)) }
+    var guardando by remember { mutableStateOf(false) }
+    var error by remember { mutableStateOf<String?>(null) }
+    AlertDialog(
+        onDismissRequest = { if (!guardando) onCerrar() },
+        confirmButton = {
+            TextButton(
+                enabled = !guardando,
+                onClick = {
+                    guardando = true
+                    error = null
+                    acciones.onDocumentos(soat, tecno) { problema ->
+                        guardando = false
+                        if (problema == null) onCerrar() else error = problema
+                    }
+                }
+            ) {
+                Text(if (guardando) "Guardando…" else "Guardar", fontFamily = Manrope, fontWeight = FontWeight.ExtraBold, color = CianMarca)
+            }
+        },
+        dismissButton = {
+            TextButton(enabled = !guardando, onClick = onCerrar) {
+                Text("Cancelar", fontFamily = Manrope, fontWeight = FontWeight.ExtraBold, color = GrisAzul)
+            }
+        },
+        title = { Text("Actualizar documentos", fontFamily = Manrope, fontWeight = FontWeight.ExtraBold) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text(
+                    "Si renovaste el SOAT o la revisión técnico-mecánica, elige la nueva fecha de vencimiento.",
+                    fontFamily = Manrope, fontWeight = FontWeight.SemiBold, fontSize = 14.sp
+                )
+                CampoFecha(soat, "SOAT vence", error != null && error!!.contains("SOAT")) { soat = it }
+                CampoFecha(tecno, "Técnico-mec. vence", error != null && error!!.contains("técnico")) { tecno = it }
+                if (error != null) Text(error!!, fontFamily = Manrope, fontWeight = FontWeight.SemiBold, fontSize = 13.sp, color = NaranjaMarca)
+            }
+        },
+        containerColor = Oscuro,
+        titleContentColor = Claro,
+        textContentColor = Claro
+    )
 }
 
 @Composable
