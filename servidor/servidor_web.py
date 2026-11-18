@@ -209,6 +209,8 @@ def obtener_vehiculos_en_vivo():
                            WHERE id > (SELECT COALESCE(MAX(id), 0) - %s FROM ubicaciones)
                              AND id_recorrido IS NOT NULL AND NOT (id_recorrido = ANY(%s))
                              AND hora_recepcion::timestamptz > now() - make_interval(secs => %s)
+                             -- el recorrido de un envío ya finalizado o cancelado NO es "transmite sin envío"
+                             AND NOT EXISTS (SELECT 1 FROM envios e WHERE e.id_recorrido = ubicaciones.id_recorrido)
                            ORDER BY id_recorrido, id DESC""",
                        (VENTANA_RECIENTES, list(por_recorrido), SEGUNDOS_SIN_ENVIO))
         filas += cursor.fetchall()
