@@ -8,6 +8,7 @@ para LEER, y responde estas rutas:
 
   /datos                  último punto GPS (Tiempo Real)
   /recorrido              puntos del recorrido en curso (Tiempo Real)
+  /vivo                   P3-S4: TODOS los vehículos en movimiento (posición, envío, planilla)
   /recorridos             resumen de recorridos, con filtro opcional por
                           rango de fecha/hora (?desde=...&hasta=...&limite=N).
                           limite=todas quita el tope (botón "Ver todas").
@@ -175,6 +176,64 @@ def obtener_datos_actuales():
     return {"lat": str(latitud), "lon": str(longitud), "fecha": fecha, "hora": hora, "nombre": nombre,
             "planilla": planilla,  # P3-S1
             "envio": api_envios.resumen_envio_de_recorrido(id_recorrido)}  # P3-S2
+
+
+# P3-S4 ---------------------------------------------------------------
+#  VARIOS VEHÍCULOS EN TIEMPO REAL
+# ---------------------------------------------------------------------
+SEGUNDOS_SIN_ENVIO = 120    # un celular que transmite SIN envío se muestra si mandó algo en los últimos 2 min
+VENTANA_RECIENTES = 5000    # para buscar esos recorridos solo se miran las últimas filas (rápido)
+
+
+def obtener_vehiculos_en_vivo():
+    """
+    Todos los vehículos que se están moviendo, para dibujarlos juntos en Tiempo real:
+      · los camiones con un envío en ruta o en destino (aunque lleven rato sin señal)
+      · los celulares que transmiten sin envío (como en P3-S1) y mandaron algo hace poco
+    Cada uno: id_recorrido, placa, última posición y hora, segundos desde el último
+    paquete, planilla (conductor) y envío (o None).
+    """
+    envios = api_envios.envios_en_vivo()
+    por_recorrido = {str(e["progreso"]["id_recorrido"]): e for e in envios}
+    conexion = obtener_conexion()
+    cursor = conexion.cursor()
+    try:
+        filas = []
+        columnas = """DISTINCT ON (id_recorrido) id_recorrido, latitud, longitud, hora_gps, hora_recepcion,
+                      EXTRACT(EPOCH FROM now() - hora_recepcion::timestamptz)"""
+        if por_recorrido:
+            cursor.execute(f"""SELECT {columnas} FROM ubicaciones WHERE id_recorrido = ANY(%s)
+                               ORDER BY id_recorrido, id DESC""", (list(por_recorrido),))
+            filas += cursor.fetchall()
+        cursor.execute(f"""SELECT {columnas} FROM ubicaciones
+                           WHERE id > (SELECT COALESCE(MAX(id), 0) - %s FROM ubicaciones)
+                             AND id_recorrido IS NOT NULL AND NOT (id_recorrido = ANY(%s))
+                             AND hora_recepcion::timestamptz > now() - make_interval(secs => %s)
+                           ORDER BY id_recorrido, id DESC""",
+                       (VENTANA_RECIENTES, list(por_recorrido), SEGUNDOS_SIN_ENVIO))
+        filas += cursor.fetchall()
+    except psycopg2.errors.UndefinedColumn:
+        conexion.rollback()
+        filas = []
+    finally:
+        cursor.close()
+        conexion.close()
+
+    planillas = _consultar_planillas([f[0] for f in filas])
+    vehiculos = []
+    for id_rec, lat, lon, hora_gps, hora_recepcion, segundos in filas:
+        envio = por_recorrido.get(str(id_rec))
+        vehiculos.append({
+            "id_recorrido": id_rec,
+            "placa": envio["placa"] if envio else None,
+            "lat": lat, "lon": lon,
+            "fecha": hora_recepcion.split("T")[0], "hora": hora_gps or "—",
+            "segundos": max(0, int(segundos or 0)),
+            "planilla": planillas.get(id_rec),
+            "envio": envio,
+        })
+    vehiculos.sort(key=lambda v: (v["envio"] is None, v["placa"] or "", v["id_recorrido"]))
+    return {"nombre": obtener_nombre_integrante(), "vehiculos": vehiculos}
 
 
 def obtener_puntos_del_recorrido_actual():
@@ -665,6 +724,8 @@ class ManejadorDeSolicitudes(BaseHTTPRequestHandler):
         try:
             if ruta.path == "/recorrido":
                 datos = obtener_puntos_del_recorrido_actual()
+            elif ruta.path == "/vivo":                     # P3-S4: todos los vehículos en movimiento
+                datos = obtener_vehiculos_en_vivo()
             elif ruta.path == "/recorridos":
                 datos = obtener_lista_recorridos(
                     limite=parametros.get("limite", [None])[0],

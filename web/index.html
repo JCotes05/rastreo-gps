@@ -787,6 +787,42 @@
   .dos-columnas { display: grid; grid-template-columns: 1fr 1fr; gap: 0 10px; }
   @media (max-width: 420px) { .dos-columnas { grid-template-columns: 1fr; } }
 
+  /* P3-S4: varios vehículos en Tiempo real */
+  .camion-vivo-icono { background: none; border: 0; cursor: pointer; }
+  .camion-vivo {
+    width: 38px; height: 38px; border-radius: 50%; box-sizing: border-box;
+    background: var(--c); border: 3px solid #fff;
+    display: flex; align-items: center; justify-content: center;
+    box-shadow: 0 6px 14px -4px rgba(11, 31, 58, 0.75); transition: transform 0.15s ease;
+  }
+  .camion-vivo-icono.seleccionado .camion-vivo { transform: scale(1.15); box-shadow: 0 0 0 3px var(--oscuro), 0 8px 18px -4px rgba(11, 31, 58, 0.85); }
+  .camion-vivo-icono.planilla-abierta .camion-vivo { box-shadow: 0 0 0 3px var(--oscuro), 0 0 0 7px rgba(230, 233, 239, 0.95); }
+  .camion-vivo-icono.sin-senal .camion-vivo { filter: grayscale(0.75); opacity: 0.7; }
+  .placa-vivo {
+    position: absolute; top: 41px; left: 50%; transform: translateX(-50%);
+    padding: 1px 6px; border-radius: 6px; border: 2px solid var(--c);
+    background: #fff; color: var(--oscuro); font-family: 'Manrope', system-ui, sans-serif;
+    font-size: 10.5px; font-weight: 800; letter-spacing: 0.04em; white-space: nowrap;
+  }
+  .cabecera-vivo { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 2px 0 8px; }
+  .cabecera-vivo .btn { flex: 0 0 auto; padding: 6px 10px; }
+  .vivo-fila {
+    display: flex; align-items: center; gap: 10px; width: 100%; margin-top: 7px; padding: 9px 12px;
+    border: 2px solid transparent; border-radius: 12px; cursor: pointer; text-align: left;
+    background: rgba(11, 31, 58, 0.42); color: var(--claro); font-family: inherit;
+  }
+  .vivo-fila:hover { background: rgba(11, 31, 58, 0.6); }
+  .vivo-fila.activa { border-color: var(--claro); }
+  .vivo-color { flex: 0 0 auto; width: 14px; height: 14px; border-radius: 50%; border: 2px solid #fff; }
+  .vivo-texto { min-width: 0; }
+  .vivo-texto b { display: block; font-size: 13.5px; }
+  .vivo-texto small { display: block; margin-top: 2px; font-size: 11.5px; font-weight: 600; color: var(--gris-azul); }
+  .sin-senal-txt { color: #FFB4A9; }
+  .placa-chip {
+    font-size: 11px; font-weight: 800; letter-spacing: 0.04em; padding: 1px 7px; border-radius: 6px;
+    background: var(--c); color: #fff;
+  }
+
   body.rol-consulta .solo-operador { display: none !important; }
   body:not(.rol-admin) .solo-admin { display: none !important; }
 </style>
@@ -890,6 +926,13 @@
       <button class="modo activo" id="modo-tiempo-real" onclick="cambiarVista('tiempo-real')">📍 En vivo</button>
       <button class="modo" id="modo-historicos" onclick="cambiarVista('historicos')">🕐 Históricos</button>
       <button class="modo" id="modo-envios" onclick="cambiarVista('envios')">📦 Envíos<span class="insignia" id="insignia-envios" hidden></span></button>
+    </div>
+
+    <!-- P3-S4: vehículos en movimiento (modo En vivo) -->
+    <div id="seccion-vivo">
+      <div class="cabecera-vivo"><span class="menu-titulo">Vehículos en vivo <span id="conteo-vivo"></span></span>
+        <button type="button" class="btn btn-secundario btn-chico" onclick="verTodosLosVehiculos()">Ver todos</button></div>
+      <div id="lista-vivo"><div class="lista-vacia">Cargando…</div></div>
     </div>
 
     <div id="seccion-historicos" hidden>
@@ -1653,6 +1696,7 @@
     porId('titulo-modo-texto').textContent = hist ? 'Históricos' : (env ? 'Envíos' : 'En vivo');
     porId('seccion-historicos').hidden = !hist;
     porId('seccion-envios').hidden = !env;
+    porId('seccion-vivo').hidden = hist || env;          // P3-S4
 
     if (hist) {
       if (mapaHistorico === null) {
@@ -1694,14 +1738,228 @@
     iconAnchor: [18, 18]
   });
 
-  var marcador = null;
+  // =====================================================================
+  // P3-S4 · VARIOS VEHÍCULOS EN TIEMPO REAL
+  // Cada camión con un envío en ruta (y cada celular que transmite sin envío)
+  // tiene su propio color: el camión, la línea que ya recorrió y su ruta
+  // planeada (punteada). Uno está SELECCIONADO: de él se muestran los datos
+  // de arriba, la tarjeta del viaje, la planilla, los puntos de control y
+  // los eventos de la carga. Se elige tocándolo o desde el menú.
+  // =====================================================================
+  var PALETA_VIVO = ['#1565D8', '#E8710A', '#0F9D58', '#8E24AA', '#00838F', '#6D4C41', '#3949AB', '#C2185B', '#546E7A', '#9E9D24'];
+  var SIN_SENAL_S = 60;             // sin paquetes hace más de esto: el camión se ve apagado
+  var RECARGA_LINEA_MS = 60000;     // cada cuánto se vuelve a pedir la línea completa (por si se perdió un punto)
+  var vehiculos = {};               // id_recorrido -> estado de ese vehículo en el mapa
+  var seleccionado = null;          // id_recorrido del vehículo seleccionado
+  var siguiendo = false;            // el mapa sigue al seleccionado (hasta que el usuario lo mueva)
+  var yaEncuadrado = false;         // la primera vez se encuadran todos los vehículos
+  var capaVivo = L.layerGroup().addTo(mapa);
+  var marcador = null;              // el marcador del vehículo seleccionado (lo usa la planilla)
 
-  // ---- Tarjeta flotante con la planilla del recorrido en curso (P3-S1) ----
+  mapa.createPane('planeadaVivo');
+  mapa.getPane('planeadaVivo').style.zIndex = 380;
+
+  function colorLibre(clave) {
+    var h = 0;
+    for (var i = 0; i < clave.length; i++) { h = (h * 31 + clave.charCodeAt(i)) >>> 0; }
+    var usados = {};
+    Object.keys(vehiculos).forEach(function (k) { usados[vehiculos[k].color] = true; });
+    for (var n = 0; n < PALETA_VIVO.length; n++) {
+      var c = PALETA_VIVO[(h + n) % PALETA_VIVO.length];
+      if (!usados[c]) { return c; }
+    }
+    return PALETA_VIVO[h % PALETA_VIVO.length];
+  }
+
+  function nombreVehiculo(d) { return d.placa || ('Sin envío · …' + String(d.id_recorrido).slice(-4)); }
+
+  function iconoVehiculo(v) {
+    var d = v.datos;
+    return L.divIcon({
+      className: 'camion-vivo-icono' + (v.id === seleccionado ? ' seleccionado' : '') + (d.segundos > SIN_SENAL_S ? ' sin-senal' : ''),
+      iconSize: [38, 38], iconAnchor: [19, 19],
+      html: '<div class="camion-vivo" style="--c:' + v.color + '">' +
+            '<svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path fill="#fff" d="M2 6.5h11.5v9H2zM14.5 9.5h3.8l3.2 3.4v2.6h-7z"/>' +
+            '<circle cx="6.5" cy="17" r="2.1" fill="#fff" stroke="' + v.color + '" stroke-width="1.2"/>' +
+            '<circle cx="17.5" cy="17" r="2.1" fill="#fff" stroke="' + v.color + '" stroke-width="1.2"/></svg></div>' +
+            '<span class="placa-vivo" style="--c:' + v.color + '">' + escaparHtml(nombreVehiculo(d)) + '</span>'
+    });
+  }
+
+  function crearVehiculo(d) {
+    var v = { id: d.id_recorrido, datos: d, color: colorLibre(String(d.placa || d.id_recorrido)), coords: [],
+              lineaPedida: 0, planDe: null, capa: L.layerGroup().addTo(capaVivo), firmaIcono: '' };
+    v.capaPlan = L.layerGroup().addTo(v.capa);
+    v.contorno = L.polyline([], { color: '#FFFFFF', weight: 11, opacity: 0.95, lineJoin: 'round', lineCap: 'round', interactive: false }).addTo(v.capa);
+    v.linea = L.polyline([], { color: v.color, weight: 6, opacity: 1, lineJoin: 'round', lineCap: 'round', interactive: false }).addTo(v.capa);
+    v.flechas = L.layerGroup().addTo(v.capa);
+    v.marcador = L.marker([d.lat, d.lon], { icon: iconoVehiculo(v), zIndexOffset: 1000, title: nombreVehiculo(d) }).addTo(v.capa);
+    v.marcador.on('click', function (ev) {
+      L.DomEvent.stopPropagation(ev);
+      if (seleccionado === v.id) { alternarPlanilla(); } else { seleccionar(v.id, false); abrirPlanilla(); }
+    });
+    vehiculos[v.id] = v;
+    return v;
+  }
+
+  function quitarVehiculo(id) {
+    capaVivo.removeLayer(vehiculos[id].capa);
+    delete vehiculos[id];
+    if (seleccionado === id) {
+      seleccionado = null;
+      marcador = null;
+      siguiendo = false;
+      if (planillaAbierta) { cerrarPlanilla(); }
+    }
+  }
+
+  // La línea recorrida: la primera vez (y cada minuto) se pide completa; entre tanto
+  // se le agrega la posición nueva que trae /vivo cada 5 s.
+  function actualizarLinea(v) {
+    var d = v.datos, ahora = Date.now();
+    if (ahora - v.lineaPedida > RECARGA_LINEA_MS) {
+      v.lineaPedida = ahora;
+      fetch('/puntos_recorrido?id=' + encodeURIComponent(v.id)).then(function (r) { return r.json(); }).then(function (puntos) {
+        if (!vehiculos[v.id] || !Array.isArray(puntos)) { return; }
+        v.coords = puntos.map(function (p) { return [p.lat, p.lon]; });
+        pintarLinea(v);
+      }).catch(function (e) { console.error(e); });
+      return;
+    }
+    var ultimo = v.coords[v.coords.length - 1];
+    if (!ultimo || ultimo[0] !== d.lat || ultimo[1] !== d.lon) {
+      v.coords.push([d.lat, d.lon]);
+      pintarLinea(v);
+    }
+  }
+  function pintarLinea(v) {
+    v.contorno.setLatLngs(v.coords);
+    v.linea.setLatLngs(v.coords);
+    dibujarFlechas(v.flechas, v.coords);
+  }
+
+  // Ruta planeada del envío, punteada y del color del camión (se pide una vez por envío).
+  function actualizarPlan(v) {
+    var e = v.datos.envio;
+    if (!e) { if (v.planDe !== null) { v.capaPlan.clearLayers(); v.planDe = null; } return; }
+    if (v.planDe === e.id) { return; }
+    v.planDe = e.id;
+    pedirApi('GET', '/api/envios/' + e.id).then(function (r) {
+      if (!vehiculos[v.id] || v.planDe !== e.id || !r.envio || !r.envio.ruta) { return; }
+      v.capaPlan.clearLayers();
+      L.polyline(r.envio.ruta.puntos, { color: '#FFFFFF', weight: 8, opacity: 0.85, lineJoin: 'round', interactive: false, pane: 'planeadaVivo' }).addTo(v.capaPlan);
+      L.polyline(r.envio.ruta.puntos, { color: v.color, weight: 4, opacity: 0.85, dashArray: '2 9', lineCap: 'round', lineJoin: 'round',
+                                        interactive: false, pane: 'planeadaVivo' }).addTo(v.capaPlan);
+    }).catch(function (err) { console.error(err); });
+  }
+
+  function pintarIcono(v) {
+    var firma = [v.id === seleccionado, v.datos.segundos > SIN_SENAL_S, nombreVehiculo(v.datos)].join('|');
+    if (firma !== v.firmaIcono) {
+      v.firmaIcono = firma;
+      v.marcador.setIcon(iconoVehiculo(v));
+      v.marcador.setZIndexOffset(v.id === seleccionado ? 2000 : 1000);
+    }
+    v.linea.setStyle({ opacity: seleccionado === null || v.id === seleccionado ? 1 : 0.7 });
+    if (v.id === seleccionado) { v.capa.eachLayer(function (l) { if (l.bringToFront) { l.bringToFront(); } }); }
+  }
+
+  // Elige el vehículo cuyos datos se muestran (y, si 'seguir', centra el mapa en él).
+  function seleccionar(id, seguir) {
+    if (!vehiculos[id]) { return; }
+    seleccionado = id;
+    marcador = vehiculos[id].marcador;
+    siguiendo = !!seguir;
+    Object.keys(vehiculos).forEach(function (k) { pintarIcono(vehiculos[k]); });
+    mostrarSeleccionado();
+    if (seguir) { mapa.setView(marcador.getLatLng(), Math.max(mapa.getZoom(), 15)); }
+    pintarListaVivo();
+  }
+
+  function mostrarSeleccionado() {
+    var v = seleccionado !== null ? vehiculos[seleccionado] : null;
+    var d = v ? v.datos : null;
+    porId('lat').innerText = d ? Number(d.lat).toFixed(5) : '—';
+    porId('lon').innerText = d ? Number(d.lon).toFixed(5) : '—';
+    porId('fecha').innerText = d ? d.fecha : '—';
+    porId('hora').innerText = d ? d.hora : '—';
+    colorSeleccionado = v ? v.color : null;
+    planillaVivo = d ? d.planilla : null;
+    actualizarEnvioVivo(d ? d.envio : null);
+    if (planillaAbierta) { if (d) { pintarPlanilla(); } else { cerrarPlanilla(); } }
+    marcarCamion(planillaAbierta);
+  }
+
+  function encuadrarTodos() {
+    var b = L.latLngBounds([]);
+    Object.keys(vehiculos).forEach(function (k) {
+      var v = vehiculos[k];
+      b.extend([v.datos.lat, v.datos.lon]);
+    });
+    if (b.isValid()) { mapa.fitBounds(b, margenesVivo()); }
+  }
+  // Deja libres los datos de arriba y la tarjeta del viaje (en celular van arriba; en el PC, a la derecha).
+  function margenesVivo() {
+    var arriba = 80, derecha = 60;
+    ['ventana-datos', 'tarjeta-viaje'].forEach(function (id) {
+      var el = porId(id);
+      if (el && !el.hidden && el.offsetParent !== null) {
+        var r = el.getBoundingClientRect();
+        if (window.innerWidth <= 720) { arriba = Math.max(arriba, r.bottom + 40); }
+        else if (id === 'tarjeta-viaje') { derecha = Math.max(derecha, window.innerWidth - r.left + 40); }
+      }
+    });
+    return { paddingTopLeft: [50, arriba], paddingBottomRight: [derecha, 60], maxZoom: 15 };
+  }
+
+  function textoHace(s) {
+    if (s < 60) { return 'hace ' + s + ' s'; }
+    if (s < 3600) { return 'hace ' + Math.round(s / 60) + ' min'; }
+    return 'hace ' + Math.round(s / 3600) + ' h';
+  }
+
+  // Lista de vehículos en el menú (modo En vivo).
+  var firmaListaVivo = '';
+  function pintarListaVivo() {
+    var ids = Object.keys(vehiculos).sort(function (a, b) {
+      return nombreVehiculo(vehiculos[a].datos).localeCompare(nombreVehiculo(vehiculos[b].datos));
+    });
+    porId('conteo-vivo').textContent = ids.length ? '(' + ids.length + ')' : '';
+    var html = ids.length ? ids.map(function (id) {
+      var v = vehiculos[id], d = v.datos, e = d.envio;
+      var senal = d.segundos > SIN_SENAL_S ? '<span class="sin-senal-txt">Sin señal ' + textoHace(d.segundos).replace('hace ', '') + '</span>'
+                                           : '<span>' + textoHace(d.segundos) + '</span>';
+      return '<button type="button" class="vivo-fila' + (id === seleccionado ? ' activa' : '') + '" data-id="' + escaparHtml(id) + '">' +
+        '<i class="vivo-color" style="background:' + v.color + '"></i>' +
+        '<span class="vivo-texto"><b>' + escaparHtml(nombreVehiculo(d)) + '</b>' +
+        '<small>' + (e ? e.codigo + ' · ' + (e.estado === 'en_destino' ? 'En destino' : e.progreso.porcentaje + ' %') +
+                         (e.alertas.some(function (a) { return a.activa; }) ? ' · ⚠' : '') : 'Transmite sin envío') + ' · ' + senal + '</small></span>' +
+        '</button>';
+    }).join('') : '<div class="lista-vacia">No hay vehículos en movimiento. Cuando un conductor inicie un viaje, aparecerá aquí.</div>';
+    if (html === firmaListaVivo) { return; }
+    firmaListaVivo = html;
+    var caja = porId('lista-vivo');
+    caja.innerHTML = html;
+    Array.prototype.forEach.call(caja.querySelectorAll('.vivo-fila'), function (b) {
+      b.addEventListener('click', function () {
+        seleccionar(b.getAttribute('data-id'), true);
+        if (window.innerWidth <= 720) { alternarMenu(false); }
+      });
+    });
+  }
+  function verTodosLosVehiculos() {
+    siguiendo = false;
+    encuadrarTodos();
+    if (window.innerWidth <= 720) { alternarMenu(false); }
+  }
+
+  // ---- Tarjeta flotante con la planilla del vehículo seleccionado (P3-S1) ----
   // Se abre/cierra al tocar el camión; también se cierra con la X, con Esc o
   // tocando el mapa. Mientras está abierta se actualiza con cada consulta.
   var planillaVivo;                 // undefined = aún no se sabe; null = sin planilla
   var planillaAbierta = false;
   var htmlPlanillaMostrado = null;
+  var colorSeleccionado = null;
 
   function pintarPlanilla() {
     var html = htmlPlanillaVivo(planillaVivo) + htmlEnvioPlanilla(envioVivo);   // P3-S2: + datos del envío
@@ -1711,11 +1969,14 @@
       cargarFotosPlanilla(porId('planilla-contenido'));   // P3-S3
     }
   }
-  function marcarCamion(seleccionado) {
-    var elemento = marcador && marcador.getElement();
-    if (elemento) { elemento.classList.toggle('seleccionado', seleccionado); }
+  function marcarCamion(abierta) {
+    Object.keys(vehiculos).forEach(function (k) {
+      var el = vehiculos[k].marcador.getElement();
+      if (el) { el.classList.toggle('planilla-abierta', abierta && k === seleccionado); }
+    });
   }
   function abrirPlanilla() {
+    if (seleccionado === null) { return; }
     planillaAbierta = true;
     pintarPlanilla();
     porId('tarjeta-planilla').hidden = false;
@@ -1730,44 +1991,31 @@
     if (planillaAbierta) { cerrarPlanilla(); } else { abrirPlanilla(); }
   }
   mapa.on('click', function () { if (planillaAbierta) { cerrarPlanilla(); } });
+  mapa.on('dragstart', function () { siguiendo = false; });   // si el usuario mueve el mapa, se deja de seguir
   document.addEventListener('keydown', function (e) {
     if (e.key === 'Escape' && planillaAbierta) { cerrarPlanilla(); }
   });
 
-  // La línea del recorrido en curso — empieza vacía y se va llenando.
-  // Son DOS líneas superpuestas: un contorno blanco debajo y el color de
-  // la marca encima. Así se distingue bien sobre cualquier fondo (calles,
-  // parques, agua) y sobre el gris del mapa.
-  var lineaContorno = L.polyline([], {
-    color: '#FFFFFF', weight: 13, opacity: 0.95, lineJoin: 'round', lineCap: 'round', interactive: false
-  }).addTo(mapa);
-  var linea = L.polyline([], {
-    color: '#1565D8', weight: 8, opacity: 1, lineJoin: 'round', lineCap: 'round', interactive: false
-  }).addTo(mapa);
-
-  // Flechitas que indican hacia dónde va el camión. Se recalculan cuando
+  // Flechitas que indican hacia dónde va cada camión. Se recalculan cuando
   // llega un punto nuevo y cuando cambia el zoom (se reparten cada
   // SEPARACION_FLECHAS_PX píxeles a lo largo de la línea).
   var SEPARACION_FLECHAS_PX = 90;
-  var capaFlechas = L.layerGroup().addTo(mapa);
-  var coordsRecorrido = [];
-  var firmaRecorrido = '';
 
-  function dibujarFlechas() {
-    capaFlechas.clearLayers();
-    if (coordsRecorrido.length < 2) { return; }
+  function dibujarFlechas(capa, coords) {
+    capa.clearLayers();
+    if (coords.length < 2) { return; }
     var z = mapa.getZoom();
 
     // Puntos en píxeles absolutos del zoom actual; los que quedan a menos
     // de 8 px del anterior se descartan (el "temblor" del GPS con el camión
     // quieto haría girar las flechas en todas direcciones).
     var P = [];
-    coordsRecorrido.forEach(function (c, i) {
+    coords.forEach(function (c, i) {
       var p = mapa.project(c, z);
-      if (P.length === 0 || i === coordsRecorrido.length - 1 || p.distanceTo(P[P.length - 1]) >= 8) { P.push(p); }
+      if (P.length === 0 || i === coords.length - 1 || p.distanceTo(P[P.length - 1]) >= 8) { P.push(p); }
     });
 
-    var falta = SEPARACION_FLECHAS_PX / 2, puestas = 0, MAXIMO = 300;
+    var falta = SEPARACION_FLECHAS_PX / 2, puestas = 0, MAXIMO = 150;
     for (var i = 1; i < P.length && puestas < MAXIMO; i++) {
       var dx = P[i].x - P[i - 1].x, dy = P[i].y - P[i - 1].y;
       var largo = Math.sqrt(dx * dx + dy * dy);
@@ -1784,14 +2032,16 @@
             html: '<svg width="20" height="20" viewBox="-10 -10 20 20" style="transform:rotate(' + grados.toFixed(0) + 'deg)">' +
                   '<path d="M-3.6 -5 L3.2 0 L-3.6 5" fill="none" stroke="#FFFFFF" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round"/></svg>'
           })
-        }).addTo(capaFlechas);
+        }).addTo(capa);
         falta = SEPARACION_FLECHAS_PX;
         puestas++;
       }
       falta -= (largo - usado);
     }
   }
-  mapa.on('zoomend', dibujarFlechas);
+  mapa.on('zoomend', function () {
+    Object.keys(vehiculos).forEach(function (k) { dibujarFlechas(vehiculos[k].flechas, vehiculos[k].coords); });
+  });
 
   function destellar(id) {
     var caja = porId(id);
@@ -1799,69 +2049,62 @@
     setTimeout(function () { caja.classList.remove('actualizado'); }, 700);
   }
 
+  // Cada 5 s: todos los vehículos en movimiento (/vivo).
   function actualizarValores() {
-    fetch('/datos')
+    fetch('/vivo')
       .then(function (respuesta) { return respuesta.json(); })
       .then(function (datos) {
-        porId('lat').innerText = datos.lat;
-        porId('lon').innerText = datos.lon;
-        porId('fecha').innerText = datos.fecha;
-        porId('hora').innerText = datos.hora;
-        ['lat', 'lon', 'fecha', 'hora'].forEach(destellar);
-
+        if (!datos || !Array.isArray(datos.vehiculos)) { return; }
         // El nombre viaja desde el servidor (nombre.txt, propio de cada
         // instancia) — así cada uno ve su propio nombre en la pestaña.
-        if (datos.nombre) {
-          document.title = datos.nombre + ' · Orbita';
+        if (datos.nombre) { document.title = datos.nombre + ' · Orbita'; }
+
+        var vistos = {};
+        datos.vehiculos.forEach(function (d) {
+          d.lat = parseFloat(d.lat);
+          d.lon = parseFloat(d.lon);
+          if (isNaN(d.lat) || isNaN(d.lon)) { return; }
+          vistos[d.id_recorrido] = true;
+          var v = vehiculos[d.id_recorrido] || crearVehiculo(d);
+          v.datos = d;
+          v.marcador.setLatLng([d.lat, d.lon]);
+          actualizarLinea(v);
+          actualizarPlan(v);
+          if (d.envio) { avisarAlertasNuevas(d.envio, d.id_recorrido); }
+        });
+        Object.keys(vehiculos).forEach(function (id) { if (!vistos[id]) { quitarVehiculo(id); } });
+
+        // Si no hay nadie seleccionado, se toma el que mandó el último paquete.
+        if (seleccionado === null) {
+          var ids = Object.keys(vehiculos).sort(function (a, b) { return vehiculos[a].datos.segundos - vehiculos[b].datos.segundos; });
+          if (ids.length) { seleccionado = ids[0]; marcador = vehiculos[ids[0]].marcador; }
         }
+        Object.keys(vehiculos).forEach(function (k) { pintarIcono(vehiculos[k]); });
+        mostrarSeleccionado();
+        if (seleccionado !== null) { ['lat', 'lon', 'fecha', 'hora'].forEach(destellar); }
+        pintarListaVivo();
 
-        // Planilla del recorrido en curso (P3-S1). Si el servidor aún no la manda, queda undefined.
-        planillaVivo = datos.planilla;
-        actualizarEnvioVivo(datos.envio);              // P3-S2: el envío del recorrido en curso (o null)
-        if (planillaAbierta) { pintarPlanilla(); }
-
-        var lat = parseFloat(datos.lat);
-        var lon = parseFloat(datos.lon);
-        if (!isNaN(lat) && !isNaN(lon)) {
-          var posicion = [lat, lon];
-          if (marcador === null) {
-            // Primera ubicación real: crea el marcador y acerca el mapa.
-            marcador = L.marker(posicion, { icon: iconoCamion, title: 'Ver planilla del viaje' }).addTo(mapa);
-            marcador.on('click', alternarPlanilla);
-            mapa.setView(posicion, 15);
-          } else {
-            marcador.setLatLng(posicion);
-            // El mapa se centra en el camión en CADA actualización, pero
-            // conservando el zoom que el usuario tenga en ese momento.
-            mapa.setView(posicion, mapa.getZoom());
-          }
+        if (!yaEncuadrado && Object.keys(vehiculos).length) {
+          yaEncuadrado = true;
+          encuadrarTodos();
+        } else if (siguiendo && marcador) {
+          mapa.setView(marcador.getLatLng(), mapa.getZoom());
         }
       })
       .catch(function (e) { console.error(e); });
   }
 
-  // Trae TODOS los puntos del recorrido actual y redibuja la línea completa.
-  function actualizarRecorrido() {
-    fetch('/recorrido')
-      .then(function (respuesta) { return respuesta.json(); })
-      .then(function (puntos) {
-        var coordenadas = puntos.map(function (p) { return [p.lat, p.lon]; });
-        var ultimo = coordenadas.length ? coordenadas[coordenadas.length - 1] : null;
-        var firma = coordenadas.length + ':' + (ultimo ? ultimo[0] + ',' + ultimo[1] : '');
-        if (firma === firmaRecorrido) { return; }          // no llegó nada nuevo: no se redibuja
-        firmaRecorrido = firma;
-        coordsRecorrido = coordenadas;
-        lineaContorno.setLatLngs(coordenadas);
-        linea.setLatLngs(coordenadas);
-        dibujarFlechas();
-      })
-      .catch(function (e) { console.error(e); });
-  }
+  // Las líneas se actualizan junto con /vivo; esta función queda por compatibilidad.
+  function actualizarRecorrido() {}
 
+  // Botón de la mira: centra en el seleccionado (y lo sigue); sin selección, muestra todos.
   function centrarEnVehiculo() {
     if (marcador) {
+      siguiendo = true;
       var zoomActual = mapa.getZoom();
       mapa.setView(marcador.getLatLng(), zoomActual < 13 ? 15 : zoomActual);
+    } else {
+      encuadrarTodos();
     }
   }
 
@@ -4059,39 +4302,34 @@
       capaEventosVivo.clearLayers();
       dibujarEventos(capaEventosVivo, e);
     }
-    if (rutaVivo.id !== e.id) {
-      rutaVivo = { id: e.id, puntos: null };
-      capaPlanVivo.clearLayers();
-      firmaPuntosVivo = '';
-      pedirApi('GET', '/api/envios/' + e.id).then(function (r) {
-        if (rutaVivo.id !== e.id || !r.envio || !r.envio.ruta) { return; }
-        rutaVivo.puntos = r.envio.ruta.puntos;
-        lineaPlaneada(capaPlanVivo, rutaVivo.puntos, 'planeada');
-      }).catch(function (err) { console.error(err); });
-    }
-    var firma = JSON.stringify(e.puntos_control.map(function (p) { return [p.orden, p.nivel]; }));
+    rutaVivo.id = e.id;               // P3-S4: la ruta planeada la dibuja cada vehículo (con su color)
+    var firma = e.id + ':' + JSON.stringify(e.puntos_control.map(function (p) { return [p.orden, p.nivel]; }));
     if (firma !== firmaPuntosVivo) {
       firmaPuntosVivo = firma;
       capaPuntosVivo.clearLayers();
       dibujarPuntos(capaPuntosVivo, e.puntos_control);
     }
-    // Una alerta nueva se anuncia sobre el mapa y despliega la tarjeta.
+    pintarTarjetaViaje();
+    tarjeta.hidden = false;
+  }
+  // P3-S4: una alerta nueva de CUALQUIER vehículo se anuncia sobre el mapa; si es del
+  // seleccionado, además despliega su tarjeta.
+  function avisarAlertasNuevas(e, idRecorrido) {
     e.alertas.forEach(function (a) {
       if (a.activa && !a.vista && !alertasAvisadas[a.id]) {
         alertasAvisadas[a.id] = true;
-        mostrarAvisoMapa('⚠ ' + e.codigo + ': ' + textoAlerta(a));
-        tarjetaViajePlegada = false;
+        mostrarAvisoMapa('⚠ ' + e.codigo + ' (' + e.placa + '): ' + textoAlerta(a));
+        if (idRecorrido === seleccionado) { tarjetaViajePlegada = false; }
       }
     });
-    pintarTarjetaViaje();
-    tarjeta.hidden = false;
   }
   function htmlTarjetaViaje(e) {
     var p = e.progreso, siguiente = proximoPunto(e), eta = etaDe(e, siguiente);
     var activas = e.alertas.filter(function (a) { return a.activa; });
     var nivel = e.estado === 'en_ruta' ? (p.nivel_retraso || 'a_tiempo') : null;
     var cabecera = '<button type="button" class="viaje-cabecera" onclick="alternarTarjetaViaje()" aria-expanded="' + !tarjetaViajePlegada + '">' +
-      '<span class="viaje-chips"><span class="envio-codigo">' + e.codigo + '</span>' + chipEstado(e.estado) + (nivel ? chipNivel(nivel, p.retraso_s) : '') +
+      '<span class="viaje-chips"><span class="placa-chip" style="--c:' + (colorSeleccionado || '#1565D8') + '">' + escaparHtml(e.placa) + '</span>' +
+      '<span class="envio-codigo">' + e.codigo + '</span>' + chipEstado(e.estado) + (nivel ? chipNivel(nivel, p.retraso_s) : '') +
       (activas.length ? '<span class="chip chip-alerta">⚠ ' + activas.length + '</span>' : '') + '</span>' +
       '<span class="viaje-pct">' + p.porcentaje + ' %</span>' +
       '<svg class="viaje-flecha" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg></button>';
@@ -4117,6 +4355,7 @@
     var html = htmlTarjetaViaje(envioVivo);
     var tarjeta = porId('tarjeta-viaje');
     tarjeta.classList.toggle('con-alerta', envioVivo.alertas.some(function (a) { return a.activa; }));
+    tarjeta.style.borderLeftColor = tarjeta.classList.contains('con-alerta') ? '' : (colorSeleccionado || '');   // P3-S4
     tarjeta.classList.toggle('plegada', tarjetaViajePlegada);
     if (html !== firmaTarjetaViaje) { firmaTarjetaViaje = html; tarjeta.innerHTML = html; }
   }
