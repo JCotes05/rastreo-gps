@@ -25,6 +25,7 @@ import sys
 import time
 import urllib.error
 import urllib.request
+import sesion_web  # P3-S4
 from datetime import date, datetime, timedelta, timezone
 
 from simulador_gps import desplazar, distancia_en_tiempo, punto_en
@@ -91,6 +92,7 @@ def main():
     parser.add_argument("--udp", type=int, default=5000, help="puerto UDP del listener (en esta misma máquina)")
     args = parser.parse_args()
     API = args.api.rstrip("/")
+    sesion_web.iniciar(API)          # P3-S4
     print(f"API {API}  ·  listener en 127.0.0.1:{args.udp}\n")
 
     token = preparar_camion()

@@ -23,6 +23,9 @@ para LEER, y responde estas rutas:
                           reducen CONSERVANDO las curvas (ver _simplificar_ruta).
                           (?paso=N, el método antiguo de 1 de cada N, sigue
                           funcionando pero ya no lo usa la página.)
+
+P3-S4: todas estas rutas (y la API de la página) piden haber iniciado sesión;
+acceso.revisar() lo comprueba antes de responder. Ver acceso.py.
 """
 
 import json
@@ -36,6 +39,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse, parse_qs
 from basedatos import obtener_conexion, crear_tabla
 import api_envios  # P3-S2
+import acceso      # P3-S4
 
 # P3-S1: el puerto se puede cambiar con la variable de entorno PUERTO_HTTP
 # (solo para pruebas). Si no existe, sigue siendo 8080 como siempre.
@@ -648,6 +652,11 @@ class ManejadorDeSolicitudes(BaseHTTPRequestHandler):
         ruta = urlparse(self.path)
         parametros = parse_qs(ruta.query)
 
+        if self._sin_permiso("GET", ruta.path):    # P3-S4
+            return
+        if acceso.es_ruta_propia(ruta.path):
+            self._responder(*acceso.atender("GET", ruta.path, None, self.headers.get("Cookie"), self._ip()))
+            return
         if ruta.path.startswith("/api/"):  # P3-S2
             estado, datos = api_envios.atender("GET", ruta.path, parametros, None, self.headers.get("Authorization"))
             self._responder(estado, datos)
@@ -692,6 +701,7 @@ class ManejadorDeSolicitudes(BaseHTTPRequestHandler):
         cuerpo = json.dumps(datos).encode("utf-8")
         self.send_response(estado)
         self.send_header("Content-Type", "application/json; charset=utf-8")
+        self.send_header("Cache-Control", "no-store")
         self.end_headers()
         self.wfile.write(cuerpo)
 
@@ -706,19 +716,37 @@ class ManejadorDeSolicitudes(BaseHTTPRequestHandler):
             self._responder(404, {"error": "Ruta no encontrada."})
         elif largo < 0 or largo > api_envios.MAX_CUERPO:
             self._responder(413, {"error": "El contenido es demasiado grande."})
+        elif self._sin_permiso("POST", ruta.path):    # P3-S4
+            return
+        elif acceso.es_ruta_propia(ruta.path):
+            cuerpo = self.rfile.read(largo) if largo else b""
+            self._responder(*acceso.atender("POST", ruta.path, cuerpo, self.headers.get("Cookie"), self._ip()))
         else:
             cuerpo = self.rfile.read(largo) if largo else b""
             estado, datos = api_envios.atender("POST", ruta.path, parse_qs(ruta.query), cuerpo,
                                                self.headers.get("Authorization"))
             self._responder(estado, datos)
 
+    # P3-S4: si la ruta pide sesión (o un rol) y no la tiene, responde 401/403 y devuelve True.
+    def _sin_permiso(self, metodo, ruta):
+        bloqueo = acceso.revisar(metodo, ruta, self.headers.get("Cookie"))
+        if bloqueo:
+            self._responder(*bloqueo)
+            return True
+        return False
+
+    def _ip(self):
+        return self.headers.get("X-Real-IP") or self.client_address[0]
+
     # P3-S2
-    def _responder(self, estado, datos):
+    def _responder(self, estado, datos, cabeceras=()):
         cuerpo = json.dumps(datos, ensure_ascii=False).encode("utf-8")
         self.send_response(estado)
         self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Content-Length", str(len(cuerpo)))
         self.send_header("Cache-Control", "no-store")
+        for nombre, valor in cabeceras:     # P3-S4: Set-Cookie de la sesión
+            self.send_header(nombre, valor)
         self.end_headers()
         self.wfile.write(cuerpo)
 

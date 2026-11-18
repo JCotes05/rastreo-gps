@@ -20,6 +20,7 @@ import random
 import sys
 import urllib.error
 import urllib.request
+import sesion_web  # P3-S4
 from datetime import date, datetime, timedelta
 
 CLAVE = "pruebaOrbita1"
@@ -78,6 +79,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--url", default=URL, help="dirección del servidor (por defecto http://localhost:8080)")
     URL = parser.parse_args().url.rstrip("/")
+    sesion_web.iniciar(URL)          # P3-S4
     print(f"Probando {URL}")
 
     seccion("La API responde")

@@ -31,6 +31,7 @@ import sys
 import time
 import urllib.error
 import urllib.request
+import sesion_web  # P3-S4
 from datetime import datetime, timedelta, timezone
 from urllib.parse import urlparse
 
@@ -131,6 +132,7 @@ def main():
     if not 0.1 <= args.ritmo <= 10:
         sys.exit("ERROR: --ritmo debe estar entre 0.1 y 10")
 
+    sesion_web.iniciar(args.servidor)    # P3-S4: /api/envios/<id> pide sesión
     envio = leer_envio(args.servidor, args.envio)
     if envio["estado"] not in ("asignado", "en_ruta"):
         sys.exit(f"ERROR: el envío {envio['codigo']} está '{envio['estado']}'. Debe estar asignado o en ruta.")

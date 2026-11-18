@@ -566,7 +566,7 @@
   .enlace-ejemplo { display: block; margin: 0 2px 10px auto; padding: 0; border: 0; background: none; color: var(--gris-azul); font-size: 12px; font-weight: 700; text-decoration: underline; cursor: pointer; }
   .panel-titulo { display: flex; align-items: center; gap: 8px; margin-bottom: 2px; font-size: 12px; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase; }
   .letra-punto { width: 20px; height: 20px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; color: #fff; font-size: 11px; font-weight: 800; letter-spacing: 0; }
-  .panel input[type=text], .panel input[type=tel], .panel input[type=number], .panel select {
+  .panel input[type=text], .panel input[type=tel], .panel input[type=number], .panel input[type=password], .panel select {
     width: 100%; border: 2px solid transparent; border-radius: 10px; padding: 8px 10px;
     background: var(--claro); color: var(--oscuro);
     font-family: inherit; font-size: 13px; font-weight: 600; color-scheme: light;
@@ -701,13 +701,93 @@
     }
     .tarjeta-viaje .tarjeta-datos b { font-size: 12.5px; }
     .modo { font-size: 12px; padding: 9px 4px; }
-    .panel input[type=text], .panel input[type=tel], .panel input[type=number], .panel select { font-size: 16px; padding: 7px 10px; }
+    .panel input[type=text], .panel input[type=tel], .panel input[type=number], .panel input[type=password], .panel select { font-size: 16px; padding: 7px 10px; }
     .btn-chico { min-height: 40px; }
     .boton-nuevo-envio, .boton-calcular { min-height: 44px; }
   }
+  /* =====================================================================
+     P3-S4 · ACCESO CON USUARIO Y CONTRASEÑA
+     Sin sesión, la pantalla de ingreso tapa todo (y los datos tampoco
+     llegan: el servidor responde 401). Los roles esconden botones,
+     pero quien de verdad decide es el servidor (acceso.py).
+     ===================================================================== */
+  .pantalla-ingreso {
+    position: fixed; inset: 0; z-index: 3000;
+    display: flex; align-items: center; justify-content: center; padding: 16px;
+    background: radial-gradient(ellipse at top, #1F3B5C 0%, #0B1F3A 70%);
+  }
+  body:not(.sin-sesion) .pantalla-ingreso { display: none; }
+  .ingreso-caja {
+    width: 100%; max-width: 360px; padding: 26px 22px 22px;
+    background: var(--medio); border-radius: 20px; box-shadow: var(--sombra);
+  }
+  .ingreso-caja img { display: block; height: 40px; width: auto; margin: 0 auto 6px; }
+  .ingreso-lema { text-align: center; margin: 0 0 18px; font-size: 12.5px; font-weight: 700; color: var(--gris-azul); }
+  .ingreso-caja label, .ventana label {
+    display: block; margin: 12px 0 5px;
+    font-size: 10.5px; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase; color: var(--gris-azul);
+  }
+  .ingreso-caja input, .ventana input, .ventana select {
+    width: 100%; border: 2px solid transparent; border-radius: 10px; padding: 10px 11px;
+    background: var(--claro); color: var(--oscuro);
+    font-family: inherit; font-size: 16px; font-weight: 600;
+  }
+  .ingreso-caja input:focus, .ventana input:focus, .ventana select:focus { outline: none; border-color: #5B9BFF; }
+  .ingreso-caja .btn { display: block; width: 100%; margin-top: 18px; padding: 12px 8px; font-size: 14px; }
+  .ingreso-estado { margin: 14px 0 0; min-height: 18px; text-align: center; font-size: 12.5px; font-weight: 700; color: #FFB4A9; }
+  .ingreso-estado.neutro { color: var(--gris-azul); }
+
+  /* Bloque del usuario al final del menú */
+  .panel-usuario .quien b { display: block; font-size: 13.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .panel-usuario .quien small { font-size: 11.5px; font-weight: 700; color: var(--gris-azul); }
+  .panel-usuario .acciones-usuario { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 10px; }
+  .panel-usuario .btn { flex: 1 1 auto; padding: 8px 8px; font-size: 12px; }
+
+  /* Ventanas (cambiar contraseña, usuarios) */
+  .fondo-ventana {
+    position: fixed; inset: 0; z-index: 2500; padding: 16px;
+    display: flex; align-items: center; justify-content: center;
+    background: rgba(11, 31, 58, 0.62);
+  }
+  .ventana {
+    width: 100%; max-width: 440px; max-height: calc(100vh - 32px); max-height: calc(100dvh - 32px); overflow-y: auto;
+    background: var(--medio); color: var(--claro); border-radius: 18px; padding: 18px 18px 16px; box-shadow: var(--sombra);
+  }
+  .ventana h2 { margin: 0 0 4px; font-size: 16px; font-weight: 800; }
+  .ventana .ayuda-chica { margin: 0 0 6px; font-size: 12px; line-height: 1.4; color: var(--gris-azul); font-weight: 600; }
+  .ventana .fila-botones { display: flex; gap: 8px; margin-top: 16px; }
+  .ventana h3 { margin: 18px 0 2px; font-size: 11px; font-weight: 800; letter-spacing: 0.1em; text-transform: uppercase; color: var(--gris-azul); }
+  .usuario-fila { margin-top: 8px; padding: 10px 12px; border-radius: 12px; background: rgba(11, 31, 58, 0.42); }
+  .usuario-fila.inactivo { opacity: 0.55; }
+  .usuario-fila .cabeza { display: flex; justify-content: space-between; gap: 8px; align-items: baseline; }
+  .usuario-fila b { font-size: 13.5px; }
+  .usuario-fila small { display: block; font-size: 11.5px; font-weight: 600; color: var(--gris-azul); margin-top: 2px; }
+  .usuario-fila .controles { display: flex; gap: 6px; margin-top: 8px; flex-wrap: wrap; }
+  .usuario-fila select { flex: 1 1 120px; width: auto; padding: 6px 8px; font-size: 13px; }
+  .usuario-fila .btn { flex: 0 1 auto; padding: 6px 10px; font-size: 12px; }
+  .chip-rol { font-size: 10.5px; font-weight: 800; letter-spacing: 0.06em; text-transform: uppercase; color: var(--gris-azul); white-space: nowrap; }
+  .dos-columnas { display: grid; grid-template-columns: 1fr 1fr; gap: 0 10px; }
+  @media (max-width: 420px) { .dos-columnas { grid-template-columns: 1fr; } }
+
+  body.rol-consulta .solo-operador { display: none !important; }
+  body:not(.rol-admin) .solo-admin { display: none !important; }
 </style>
 </head>
-<body>
+<body class="sin-sesion">
+
+<!-- ============ P3-S4: pantalla de ingreso (tapa todo hasta iniciar sesión) ============ -->
+<div class="pantalla-ingreso" id="pantalla-ingreso">
+  <form class="ingreso-caja" id="form-ingreso" autocomplete="on" onsubmit="ingresar(event)">
+    <img id="ingreso-logo" alt="Orbita" width="112" height="40">
+    <p class="ingreso-lema">Cada kilómetro bajo tu radar</p>
+    <label for="ingreso-usuario">Usuario</label>
+    <input type="text" id="ingreso-usuario" name="username" autocomplete="username" autocapitalize="none" spellcheck="false" required>
+    <label for="ingreso-clave">Contraseña</label>
+    <input type="password" id="ingreso-clave" name="password" autocomplete="current-password" required>
+    <button class="btn btn-principal" id="btn-ingresar" type="submit">Ingresar</button>
+    <p class="ingreso-estado neutro" id="ingreso-estado" role="alert">Comprobando la sesión…</p>
+  </form>
+</div>
 
 <div id="mapa"></div>
 <div id="mapa-historico"></div>
@@ -887,7 +967,7 @@
 
       <!-- ---------- Lista de envíos ---------- -->
       <div id="envios-lista">
-        <button class="btn btn-principal boton-nuevo-envio" onclick="abrirNuevoEnvio()">＋ Nuevo envío</button>
+        <button class="btn btn-principal boton-nuevo-envio solo-operador" onclick="abrirNuevoEnvio()">＋ Nuevo envío</button>
         <div class="tipo-filtro">
           <button class="tipo-btn activo" id="fe-activos" onclick="elegirFiltroEnvios('activos')">En curso</button>
           <button class="tipo-btn" id="fe-finalizados" onclick="elegirFiltroEnvios('finalizados')">Terminados</button>
@@ -979,11 +1059,250 @@
       </div>
     </div>
 
+    <!-- P3-S4: quién está conectado -->
+    <div class="panel panel-usuario" id="panel-usuario">
+      <div class="quien"><b id="usuario-nombre">—</b><small id="usuario-rol"></small></div>
+      <div class="acciones-usuario">
+        <button class="btn btn-secundario solo-admin" onclick="abrirUsuarios()">👥 Usuarios</button>
+        <button class="btn btn-secundario" onclick="abrirCambioClave()">Cambiar contraseña</button>
+        <button class="btn btn-secundario" onclick="salir()">Salir</button>
+      </div>
+    </div>
+
     <p class="eslogan-menu">Cada kilómetro bajo tu radar</p>
   </div>
 </aside>
 
+<!-- P3-S4: cambiar la contraseña propia -->
+<div class="fondo-ventana" id="ventana-clave" hidden onclick="if (event.target === this) cerrarVentana('ventana-clave')">
+  <form class="ventana" role="dialog" aria-labelledby="titulo-clave" onsubmit="cambiarClave(event)">
+    <h2 id="titulo-clave">Cambiar contraseña</h2>
+    <p class="ayuda-chica">Mínimo 8 caracteres. Las otras sesiones abiertas con su usuario se cerrarán.</p>
+    <input type="text" autocomplete="username" id="clave-usuario-oculto" hidden>
+    <label for="clave-actual">Contraseña actual</label>
+    <input type="password" id="clave-actual" autocomplete="current-password" required>
+    <label for="clave-nueva">Contraseña nueva</label>
+    <input type="password" id="clave-nueva" autocomplete="new-password" minlength="8" required>
+    <label for="clave-repetir">Repita la contraseña nueva</label>
+    <input type="password" id="clave-repetir" autocomplete="new-password" minlength="8" required>
+    <div class="aviso" id="aviso-clave" role="alert"></div>
+    <div class="fila-botones">
+      <button type="button" class="btn btn-secundario" onclick="cerrarVentana('ventana-clave')">Cancelar</button>
+      <button type="submit" class="btn btn-principal" id="btn-guardar-clave">Guardar</button>
+    </div>
+  </form>
+</div>
+
+<!-- P3-S4: administración de usuarios (solo admin) -->
+<div class="fondo-ventana" id="ventana-usuarios" hidden onclick="if (event.target === this) cerrarVentana('ventana-usuarios')">
+  <div class="ventana" role="dialog" aria-labelledby="titulo-usuarios">
+    <h2 id="titulo-usuarios">Usuarios de la página</h2>
+    <p class="ayuda-chica"><b>Administrador</b>: todo, incluidos los usuarios. <b>Operador</b>: crea y cancela envíos y atiende alertas.
+      <b>Consulta</b>: solo mira.</p>
+    <div id="lista-usuarios"><div class="lista-vacia">Cargando…</div></div>
+    <h3>Nuevo usuario</h3>
+    <form id="form-usuario" onsubmit="crearUsuario(event)" autocomplete="off">
+      <div class="dos-columnas">
+        <div><label for="nu-usuario">Usuario</label>
+          <input type="text" id="nu-usuario" autocapitalize="none" spellcheck="false" placeholder="ej. vcharris" required></div>
+        <div><label for="nu-rol">Rol</label>
+          <select id="nu-rol"><option value="operador">Operador</option><option value="consulta">Consulta</option><option value="admin">Administrador</option></select></div>
+      </div>
+      <label for="nu-nombre">Nombre completo</label>
+      <input type="text" id="nu-nombre" required>
+      <label for="nu-clave">Contraseña inicial (mínimo 8)</label>
+      <input type="password" id="nu-clave" autocomplete="new-password" minlength="8" required>
+      <div class="aviso" id="aviso-usuarios" role="alert"></div>
+      <div class="fila-botones">
+        <button type="button" class="btn btn-secundario" onclick="cerrarVentana('ventana-usuarios')">Cerrar</button>
+        <button type="submit" class="btn btn-principal" id="btn-crear-usuario">Crear usuario</button>
+      </div>
+    </form>
+  </div>
+</div>
+
 <script>
+  // =====================================================================
+  // 0. P3-S4 · SESIÓN
+  // Todo lo que pide datos pasa por fetch: si el servidor dice 401 (sin
+  // sesión o sesión vencida), aparece la pantalla de ingreso. Al ingresar
+  // se recarga la página para empezar limpio.
+  // =====================================================================
+  var sesionActual = null;
+  var fetchOriginal = window.fetch.bind(window);
+  window.fetch = function (url, opciones) {
+    return fetchOriginal(url, opciones).then(function (r) {
+      if (r.status === 401 && typeof url === 'string' && url.charAt(0) === '/' &&
+          url.indexOf('/api/sesion') !== 0 && url.indexOf('/api/camiones/') !== 0) {
+        mostrarIngreso('Su sesión terminó. Ingrese de nuevo.');
+      }
+      return r;
+    });
+  };
+
+  function mostrarIngreso(mensaje) {
+    var estabaAdentro = !document.body.classList.contains('sin-sesion');
+    document.body.classList.add('sin-sesion');
+    sesionActual = null;
+    var estado = document.getElementById('ingreso-estado');
+    if (estabaAdentro || estado.classList.contains('neutro')) {
+      estado.className = 'ingreso-estado' + (estabaAdentro ? '' : ' neutro');
+      estado.textContent = estabaAdentro ? (mensaje || '') : '';
+    }
+    setTimeout(function () {
+      var u = document.getElementById('ingreso-usuario');
+      if (document.activeElement !== u && document.activeElement !== document.getElementById('ingreso-clave')) { u.focus(); }
+    }, 50);
+  }
+
+  function aplicarSesion(u) {
+    sesionActual = u;
+    document.body.classList.remove('sin-sesion', 'rol-admin', 'rol-operador', 'rol-consulta');
+    document.body.classList.add('rol-' + u.rol);
+    document.getElementById('usuario-nombre').textContent = u.nombre;
+    document.getElementById('usuario-rol').textContent = u.rol_nombre + ' · ' + u.usuario;
+    document.getElementById('clave-usuario-oculto').value = u.usuario;
+  }
+
+  function ingresar(ev) {
+    ev.preventDefault();
+    var boton = document.getElementById('btn-ingresar'), estado = document.getElementById('ingreso-estado');
+    boton.disabled = true;
+    estado.className = 'ingreso-estado neutro';
+    estado.textContent = 'Ingresando…';
+    fetchOriginal('/api/sesion/ingresar', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ usuario: document.getElementById('ingreso-usuario').value,
+                             clave: document.getElementById('ingreso-clave').value })
+    }).then(function (r) {
+      return r.json().catch(function () { return {}; }).then(function (c) {
+        if (!r.ok) { throw new Error(c.error || 'Error ' + r.status + ' del servidor.'); }
+        estado.textContent = 'Bienvenido, ' + c.usuario.nombre + '…';
+        location.reload();
+      });
+    }).catch(function (e) {
+      boton.disabled = false;
+      estado.className = 'ingreso-estado';
+      estado.textContent = e instanceof TypeError ? 'No hay conexión con el servidor.' : e.message;
+      document.getElementById('ingreso-clave').select();
+    });
+  }
+
+  function salir() {
+    fetchOriginal('/api/sesion/salir', { method: 'POST' }).catch(function () {}).then(function () { location.reload(); });
+  }
+
+  function comprobarSesion() {
+    fetchOriginal('/api/sesion').then(function (r) {
+      return r.json().catch(function () { return {}; }).then(function (c) {
+        if (r.ok && c.usuario) { aplicarSesion(c.usuario); }
+        else if (r.status === 401) { mostrarIngreso(); }
+        else { throw new Error(); }
+      });
+    }).catch(function () {
+      mostrarIngreso();
+      var estado = document.getElementById('ingreso-estado');
+      estado.className = 'ingreso-estado';
+      estado.textContent = 'No se pudo comprobar la sesión. Revise la conexión e inténtelo de nuevo.';
+    });
+  }
+
+  function cerrarVentana(id) { document.getElementById(id).hidden = true; }
+
+  function abrirCambioClave() {
+    ['clave-actual', 'clave-nueva', 'clave-repetir'].forEach(function (id) { document.getElementById(id).value = ''; });
+    document.getElementById('aviso-clave').textContent = '';
+    document.getElementById('ventana-clave').hidden = false;
+    document.getElementById('clave-actual').focus();
+  }
+
+  function cambiarClave(ev) {
+    ev.preventDefault();
+    var aviso = document.getElementById('aviso-clave');
+    var nueva = document.getElementById('clave-nueva').value;
+    if (nueva !== document.getElementById('clave-repetir').value) { aviso.textContent = 'Las dos contraseñas nuevas no coinciden.'; return; }
+    var boton = document.getElementById('btn-guardar-clave');
+    boton.disabled = true;
+    pedirApi('POST', '/api/sesion/clave', { actual: document.getElementById('clave-actual').value, nueva: nueva }).then(function () {
+      cerrarVentana('ventana-clave');
+      mostrarAvisoMapa('Contraseña cambiada');
+    }).catch(function (e) { aviso.textContent = e.message; }).then(function () { boton.disabled = false; });
+  }
+
+  var NOMBRES_ROL = { admin: 'Administrador', operador: 'Operador', consulta: 'Consulta' };
+  function abrirUsuarios() {
+    alternarMenu(false);
+    document.getElementById('aviso-usuarios').textContent = '';
+    document.getElementById('ventana-usuarios').hidden = false;
+    cargarUsuarios();
+  }
+
+  function cargarUsuarios() {
+    var caja = document.getElementById('lista-usuarios');
+    pedirApi('GET', '/api/usuarios').then(function (r) {
+      caja.innerHTML = '';
+      r.usuarios.forEach(function (u) {
+        var yo = sesionActual && u.usuario === sesionActual.usuario;
+        var fila = document.createElement('div');
+        fila.className = 'usuario-fila' + (u.activo ? '' : ' inactivo');
+        fila.innerHTML = '<div class="cabeza"><b>' + escaparHtml(u.nombre) + (yo ? ' (usted)' : '') + '</b>' +
+          '<span class="chip-rol">' + (u.activo ? escaparHtml(u.rol_nombre) : 'Desactivado') + '</span></div>' +
+          '<small>' + escaparHtml(u.usuario) + ' · ' + (u.ultimo_ingreso ? 'último ingreso ' + fechaHoraCorta(u.ultimo_ingreso) : 'nunca ha ingresado') + '</small>' +
+          (yo ? '' : '<div class="controles"><select aria-label="Rol de ' + escaparHtml(u.usuario) + '">' +
+            Object.keys(NOMBRES_ROL).map(function (k) { return '<option value="' + k + '"' + (k === u.rol ? ' selected' : '') + '>' + NOMBRES_ROL[k] + '</option>'; }).join('') +
+            '</select><button type="button" class="btn btn-secundario" data-accion="clave">Nueva contraseña</button>' +
+            '<button type="button" class="btn btn-secundario" data-accion="activo">' + (u.activo ? 'Desactivar' : 'Activar') + '</button></div>');
+        if (!yo) {
+          fila.querySelector('select').addEventListener('change', function () { modificarUsuario(u.usuario, { rol: this.value }); });
+          fila.querySelector('[data-accion=activo]').addEventListener('click', function () {
+            if (u.activo && !window.confirm('¿Desactivar a ' + u.nombre + '? Ya no podrá entrar y se cerrarán sus sesiones.')) { return; }
+            modificarUsuario(u.usuario, { activo: !u.activo });
+          });
+          fila.querySelector('[data-accion=clave]').addEventListener('click', function () {
+            var clave = window.prompt('Contraseña nueva para ' + u.nombre + ' (mínimo 8 caracteres). Se cerrarán sus sesiones abiertas:');
+            if (clave) { modificarUsuario(u.usuario, { clave: clave }, 'Contraseña de ' + u.usuario + ' cambiada.'); }
+          });
+        }
+        caja.appendChild(fila);
+      });
+    }).catch(function (e) { caja.innerHTML = '<div class="lista-vacia">' + escaparHtml(e.message) + '</div>'; });
+  }
+
+  function modificarUsuario(usuario, cambios, mensaje) {
+    var aviso = document.getElementById('aviso-usuarios');
+    aviso.textContent = '';
+    pedirApi('POST', '/api/usuarios/' + encodeURIComponent(usuario), cambios).then(function () {
+      if (mensaje) { aviso.textContent = mensaje; }
+    }).catch(function (e) { aviso.textContent = e.message; }).then(cargarUsuarios);
+  }
+
+  function crearUsuario(ev) {
+    ev.preventDefault();
+    var aviso = document.getElementById('aviso-usuarios'), boton = document.getElementById('btn-crear-usuario');
+    boton.disabled = true;
+    aviso.textContent = '';
+    pedirApi('POST', '/api/usuarios', {
+      usuario: document.getElementById('nu-usuario').value, nombre: document.getElementById('nu-nombre').value,
+      rol: document.getElementById('nu-rol').value, clave: document.getElementById('nu-clave').value
+    }).then(function (r) {
+      document.getElementById('form-usuario').reset();
+      aviso.textContent = 'Usuario ' + r.usuario.usuario + ' creado. Dele su contraseña inicial y pídale que la cambie.';
+      cargarUsuarios();
+    }).catch(function (e) { aviso.textContent = e.message; }).then(function () { boton.disabled = false; });
+  }
+
+  function fechaHoraCorta(iso) {
+    var d = new Date(iso);
+    return d.toLocaleDateString('es-CO', { day: 'numeric', month: 'short' }) + ' ' +
+           d.toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' });
+  }
+
+  document.getElementById('ingreso-logo').src = document.querySelector('.logo-marca').src;
+  document.addEventListener('keydown', function (ev) {
+    if (ev.key === 'Escape') { cerrarVentana('ventana-clave'); cerrarVentana('ventana-usuarios'); }
+  });
+  comprobarSesion();
+
   // =====================================================================
   // 1. UTILIDADES
   // =====================================================================
@@ -3225,7 +3544,7 @@
         '<span class="alerta-icono">' + (a.activa ? '⚠' : '✓') + '</span>' +
         '<span class="alerta-texto"><b>' + textoAlerta(a) + '</b><small>' + (a.activa ? 'Desde ' : '') + horaDe(a.inicio) +
         (a.fin ? ' – ' + horaDe(a.fin) : ' · sigue activa') + (a.vista ? ' · vista' : '') + '</small></span>' +
-        (conBotones && a.activa && !a.vista ? '<button type="button" class="btn-visto" onclick="marcarAlertaVista(' + a.id + ', event)">Visto</button>' : '') +
+        (conBotones && a.activa && !a.vista ? '<button type="button" class="btn-visto solo-operador" onclick="marcarAlertaVista(' + a.id + ', event)">Visto</button>' : '') +
         '</div>';
     }).join('');
   }
@@ -3269,7 +3588,7 @@
                  : '<span class="gris">Se verifica al iniciar el viaje</span>') +
         htmlFila('Ruta', (e.plan.fuente === 'ors-hgv' ? 'openrouteservice (camión)' : 'OSRM (carro, tiempos ×1,25)')) +
       '</div>' +
-      (e.estado === 'asignado' ? '<button class="btn btn-secundario btn-ancho" onclick="cancelarEnvio(' + e.id + ')">Cancelar envío</button>' : '');
+      (e.estado === 'asignado' ? '<button class="btn btn-secundario btn-ancho solo-operador" onclick="cancelarEnvio(' + e.id + ')">Cancelar envío</button>' : '');
   }
 
   function limpiarEnvioDelMapa() {

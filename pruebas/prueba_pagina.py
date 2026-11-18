@@ -24,6 +24,7 @@ import subprocess
 import sys
 import tempfile
 import urllib.request
+import sesion_web  # P3-S4
 
 AQUI = os.path.dirname(os.path.abspath(__file__))
 PAGINA = os.path.join(AQUI, "..", "web", "index.html")
@@ -172,6 +173,7 @@ def main():
     revisar("Tiempo real dibuja los eventos del envío en vivo", "dibujarEventos(capaEventosVivo, e)" in html)
     revisar("Históricos dibuja los eventos del envío", "dibujarEventos(capaPlanHist, e)" in html)
     if args.url:
+        sesion_web.iniciar(args.url)     # P3-S4
         probar_servidor(args.url.rstrip("/"))
 
 
