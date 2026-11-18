@@ -20,7 +20,9 @@ Para la APP del camión (con "Authorization: Bearer <token>", salvo registro y l
   POST /api/camiones/viaje/eventos    P3-S3: lote de eventos del ESP32 de sensores y su latido
                                       (ver eventos_carga.py)
   POST /api/camiones/conductor/identificar   P3-S3: {"rostros": [jpg base64...]} del ESP32-CAM;
-                                      responde el conductor reconocido (ver reconocimiento_facial.py)
+                                      responde el conductor reconocido (ver reconocimiento_facial.py).
+                                      P3-S4: en pleno viaje dice además si es el MISMO conductor
+  GET  /api/camiones/conductor/verificacion  P3-S4: ¿toca verificar al conductor ahora? (cada 15 s)
 
 Para la PÁGINA:
   GET  /api/catalogo                  configuraciones, carrocerías, tipos de carga y empaques
@@ -31,6 +33,7 @@ Para la PÁGINA:
   GET  /api/envios/<id>               detalle (?ruta=0 para no traer la línea)
   POST /api/envios/<id>/cancelar      solo si el camión todavía no ha salido
   POST /api/alertas/<id>/vista        marca una alerta como vista
+  POST /api/envios/<id>/verificar-conductor   P3-S4 (operador o admin): pide reconocer al conductor ya
   GET  /api/planillas/<id_recorrido>/foto   P3-S3: foto con la que se reconoció al conductor (7 días)
 
 Para el resto de servidor_web.py:
@@ -106,6 +109,15 @@ ALERTA_RETRASO_S, ALERTA_RETRASO_PCT = 10 * 60, 0.25
 RUTA_MODO_DEMO = os.path.join(os.path.dirname(os.path.abspath(__file__)), "modo_demo.txt")
 AVISO_DEMO_S, ALERTA_DEMO_S = 20, 60
 
+# P3-S4: verificación del conductor DURANTE el viaje (que no cambien de conductor en la vía).
+# Mientras el envío está en ruta, la app vuelve a reconocer al conductor cada VERIFICAR_CADA_S
+# (2 min para la presentación; en operación real podría ser 20-30 min). Si un intento no fue el
+# mismo conductor, se reintenta a los REINTENTO_VERIFICACION_S. Se abre una alerta 'conductor'
+# si reconoce a OTRA persona o si falla FALLOS_PARA_ALERTA veces seguidas.
+VERIFICAR_CADA_S = 120
+REINTENTO_VERIFICACION_S = 30
+FALLOS_PARA_ALERTA = 2
+
 ITERACIONES_CLAVE = 600_000     # PBKDF2-SHA256 (recomendación de OWASP)
 DIAS_SESION = 30
 MAX_CUERPO = 1_000_000          # bytes
@@ -128,19 +140,20 @@ class ErrorAPI(Exception):
 # Entrada: servidor_web.py llama a atender()
 # ---------------------------------------------------------------------
 class _Pedido:
-    def __init__(self, parametros, datos, autorizacion, args):
+    def __init__(self, parametros, datos, autorizacion, args, usuario=None):
         self.parametros = {k: v[0] if isinstance(v, list) else v for k, v in (parametros or {}).items()}
         self.datos = datos
         self.autorizacion = autorizacion
         self.args = args
+        self.usuario = usuario          # P3-S4: usuario de la página que hizo el pedido (o None)
 
 
-def atender(metodo, ruta, parametros, cuerpo, autorizacion):
+def atender(metodo, ruta, parametros, cuerpo, autorizacion, usuario=None):
     """Devuelve (código_http, diccionario). Nunca lanza excepciones."""
     try:
         manejador, args = _buscar(metodo, ruta)
         datos = _leer_json(cuerpo) if metodo == "POST" else {}
-        return manejador(_Pedido(parametros, datos, autorizacion, args))
+        return manejador(_Pedido(parametros, datos, autorizacion, args, usuario))
     except ErrorAPI as e:
         respuesta = {"error": e.mensaje}
         if e.campo:
@@ -500,6 +513,8 @@ def _envio_json(cur, e, con_ruta=False, para_conductor=False):
         # P3-S3: eventos de la carga (frenadas, huecos, curvas, luz), conteo y estado de la carga.
         # None si la base todavía no tiene p3s3.sql.
         "sensores": eventos_carga.datos_de_carga(cur, e["id"]),
+        # P3-S4: verificaciones del conductor durante el viaje (None sin p3s4_verificacion.sql).
+        "verificacion": _verificacion_json(cur, e),
     }
     if not para_conductor:
         cur.execute(f"SELECT {COLUMNAS_CAMION} FROM camiones WHERE placa = %s", (e["placa"],))
@@ -745,6 +760,11 @@ def identificar_conductor(p):
     P3-S3 (esquema híbrido). Cuerpo: {"rostros": ["<jpg base64>", ...]} — los recortes que el
     ESP32-CAM de la cabina mandó al celular. Responde reconocido (cédula y nombre) o
     no_reconocido (ver reconocimiento_facial.py). Error 429 si el camión debe esperar.
+
+    P3-S4: si el camión tiene un envío abierto, el intento queda ligado a él. En pleno viaje
+    (en_ruta) es una VERIFICACIÓN: se compara con el conductor del viaje, se responde
+    "verificacion": {"origen", "coincide", "conductor_del_viaje"} y se abre o cierra la alerta
+    'conductor' (ver _registrar_verificacion).
     """
     try:
         jpgs = reconocimiento_facial.leer_rostros(p.datos)
@@ -752,16 +772,168 @@ def identificar_conductor(p):
         raise ErrorAPI(400, str(error), "rostros") from None
     with _bd() as cur:
         camion = _camion_autenticado(cur, p.autorizacion)
+        envio = _envio_abierto_de(cur, camion["placa"], bloquear=True)
+        estado_v = _estado_verificacion(cur, envio["id"]) if envio else None
+        en_viaje = envio is not None and envio["estado"] == "en_ruta"
+        origen = None
+        if envio is not None:
+            origen = "periodica" if en_viaje else "inicio"
+            if en_viaje and estado_v and estado_v["verificacion_pedida_en"]:
+                origen = "operador"
+        referencia = _conductor_del_viaje(cur, envio) if en_viaje else None
         try:
-            resultado = reconocimiento_facial.identificar(cur, camion["placa"], jpgs)
+            resultado = reconocimiento_facial.identificar(
+                cur, camion["placa"], jpgs, id_envio=envio["id"] if envio else None, origen=origen,
+                comparar=en_viaje, referencia=referencia["cedula"] if referencia else None)
         except reconocimiento_facial.EnEspera as error:
             raise ErrorAPI(429, str(error)) from None
         except reconocimiento_facial.NoDisponible as error:
             raise ErrorAPI(503, str(error)) from None
         except psycopg2.errors.UndefinedTable:
             raise ErrorAPI(503, "La base de datos todavía no tiene las huellas (falta ejecutar sql/p3s3_rostros.sql).") from None
+        if en_viaje and estado_v is not None:
+            _registrar_verificacion(cur, envio, camion["placa"], resultado)
+            resultado["verificacion"] = {"origen": origen, "coincide": resultado["coincide"],
+                                         "conductor_del_viaje": referencia}
     resultado.pop("similitudes", None)
+    resultado.pop("coincide", None)
     return 200, resultado
+
+
+# ---------------------------------------------------------------------
+# P3-S4: verificación del conductor durante el viaje
+# ---------------------------------------------------------------------
+def _estado_verificacion(cur, id_envio):
+    """Columnas de verificación del envío, o None si la base todavía no tiene p3s4_verificacion.sql."""
+    cur.execute("SAVEPOINT verificacion")
+    try:
+        cur.execute("""SELECT verificacion_pedida_en, verificacion_pedida_por, ultima_verificacion_en,
+                              ultima_verificacion_ok FROM envios WHERE id = %s""", (id_envio,))
+        fila = cur.fetchone()
+        cur.execute("RELEASE SAVEPOINT verificacion")
+        return fila
+    except psycopg2.errors.UndefinedColumn:
+        cur.execute("ROLLBACK TO SAVEPOINT verificacion")
+        return None
+
+
+def _conductor_del_viaje(cur, envio):
+    """{"cedula", "nombre"} del conductor que debe ir manejando: el de la planilla del recorrido
+    (lo verificó la app al iniciar el viaje) o, si se inició sin verificar, el primero que se
+    reconoció en este envío. None si todavía no hay ninguno."""
+    if envio["id_recorrido"]:
+        cur.execute("""SELECT c.cedula, c.nombre_completo FROM planillas p JOIN conductores c ON c.cedula = p.cedula
+                       WHERE p.id_recorrido = %s""", (envio["id_recorrido"],))
+        fila = cur.fetchone()
+        if fila:
+            return {"cedula": fila["cedula"], "nombre": fila["nombre_completo"]}
+    cur.execute("SAVEPOINT referencia")
+    try:
+        cur.execute("""SELECT c.cedula, c.nombre_completo FROM identificaciones i JOIN conductores c ON c.cedula = i.cedula
+                       WHERE i.id_envio = %s AND i.resultado = 'reconocido' ORDER BY i.momento LIMIT 1""", (envio["id"],))
+        fila = cur.fetchone()
+        cur.execute("RELEASE SAVEPOINT referencia")
+    except psycopg2.errors.UndefinedColumn:
+        cur.execute("ROLLBACK TO SAVEPOINT referencia")
+        fila = None
+    return {"cedula": fila["cedula"], "nombre": fila["nombre_completo"]} if fila else None
+
+
+def _verificacion_pendiente(envio, estado_v, ahora=None):
+    """'operador' | 'periodica' | None: si la app debe reconocer al conductor ahora."""
+    if envio is None or estado_v is None or envio["estado"] != "en_ruta":
+        return None
+    if estado_v["verificacion_pedida_en"]:
+        return "operador"
+    desde = estado_v["ultima_verificacion_en"] or envio["salida_real"]
+    if desde is None:
+        return None
+    espera = REINTENTO_VERIFICACION_S if estado_v["ultima_verificacion_ok"] is False else VERIFICAR_CADA_S
+    ahora = ahora or datetime.now(timezone.utc)
+    return "periodica" if (ahora - desde).total_seconds() >= espera else None
+
+
+def _registrar_verificacion(cur, envio, placa, r):
+    """Guarda el resultado en el envío y abre o cierra la alerta 'conductor'.
+    Alerta si reconoce a OTRA persona (valor_max = 1) o si no reconoce al conductor
+    FALLOS_PARA_ALERTA veces seguidas (valor_max = 0). Se cierra cuando vuelve a ser él."""
+    cur.execute("""UPDATE envios SET ultima_verificacion_en = now(), ultima_verificacion_ok = %s,
+                          verificacion_pedida_en = NULL, verificacion_pedida_por = NULL WHERE id = %s""",
+                (r["coincide"], envio["id"]))
+    cur.execute("SELECT id FROM alertas WHERE id_envio = %s AND tipo = 'conductor' AND fin IS NULL", (envio["id"],))
+    abierta = cur.fetchone()
+    if r["coincide"]:
+        if abierta:
+            cur.execute("UPDATE alertas SET fin = now() WHERE id = %s", (abierta["id"],))
+            print(f"[ENV-{envio['id']:04d}] Conductor verificado de nuevo: se cierra la alerta de conductor.", flush=True)
+        return
+    if abierta:
+        return
+    otro = r["estado"] == "reconocido"
+    if not otro:
+        cur.execute("""SELECT coincide FROM identificaciones WHERE id_envio = %s AND origen IN ('periodica', 'operador')
+                       ORDER BY momento DESC LIMIT %s""", (envio["id"], FALLOS_PARA_ALERTA))
+        ultimas = [f["coincide"] for f in cur.fetchall()]
+        if len(ultimas) < FALLOS_PARA_ALERTA or any(ultimas):
+            return
+    cur.execute("SELECT ultima_lat, ultima_lon FROM camiones WHERE placa = %s", (placa,))
+    pos = cur.fetchone() or {"ultima_lat": None, "ultima_lon": None}
+    cur.execute("""INSERT INTO alertas (id_envio, tipo, inicio, valor_max, lat, lon)
+                   VALUES (%s, 'conductor', now(), %s, %s, %s)""",
+                (envio["id"], 1 if otro else 0, pos["ultima_lat"], pos["ultima_lon"]))
+    print(f"[ENV-{envio['id']:04d}] ALERTA: " + ("otro conductor al volante." if otro else
+          f"el conductor no se pudo verificar {FALLOS_PARA_ALERTA} veces seguidas."), flush=True)
+
+
+def verificacion_pendiente(p):
+    """App, cada 15 s durante el viaje: {"pendiente": "operador"|"periodica"|null, "id_envio", "cada_s"}."""
+    with _bd() as cur:
+        camion = _camion_autenticado(cur, p.autorizacion)
+        envio = _envio_abierto_de(cur, camion["placa"])
+        estado_v = _estado_verificacion(cur, envio["id"]) if envio else None
+    return 200, {"pendiente": _verificacion_pendiente(envio, estado_v), "id_envio": envio["id"] if envio else None,
+                 "cada_s": VERIFICAR_CADA_S}
+
+
+def pedir_verificacion(p):
+    """Página (operador o admin): pide que la app reconozca al conductor de este envío ya."""
+    with _bd() as cur:
+        cur.execute(f"SELECT {COLUMNAS_ENVIO} FROM envios WHERE id = %s FOR UPDATE", (int(p.args[0]),))
+        envio = cur.fetchone()
+        if envio is None:
+            raise ErrorAPI(404, "Ese envío no existe.")
+        if envio["estado"] != "en_ruta":
+            raise ErrorAPI(409, "Solo se puede verificar al conductor mientras el envío está en ruta.")
+        if _estado_verificacion(cur, envio["id"]) is None:
+            raise ErrorAPI(503, "La base de datos todavía no tiene la verificación (falta ejecutar sql/p3s4_verificacion.sql).")
+        cur.execute("""UPDATE envios SET verificacion_pedida_en = COALESCE(verificacion_pedida_en, now()),
+                              verificacion_pedida_por = COALESCE(verificacion_pedida_por, %s) WHERE id = %s""",
+                    (p.usuario, envio["id"]))
+        print(f"[ENV-{envio['id']:04d}] {p.usuario or 'La página'} pidió verificar al conductor.", flush=True)
+        return 200, {"envio": _envio_json(cur, envio)}
+
+
+def _verificacion_json(cur, e):
+    """Bloque "verificacion" del envío para la página (None si la base no tiene p3s4_verificacion.sql)."""
+    estado_v = _estado_verificacion(cur, e["id"])
+    if estado_v is None:
+        return None
+    cur.execute("""SELECT i.momento, i.origen, i.resultado, i.cedula, c.nombre_completo, i.similitud, i.coincide, i.motivo
+                   FROM identificaciones i LEFT JOIN conductores c ON c.cedula = i.cedula
+                   WHERE i.id_envio = %s ORDER BY i.momento DESC LIMIT 12""", (e["id"],))
+    historial = [{"momento": _iso(f["momento"]), "origen": f["origen"], "resultado": f["resultado"],
+                  "cedula": f["cedula"], "nombre": f["nombre_completo"], "similitud": round(f["similitud"], 2),
+                  "coincide": f["coincide"], "motivo": f["motivo"]} for f in cur.fetchall()]
+    proxima = None
+    if e["estado"] == "en_ruta" and not estado_v["verificacion_pedida_en"]:
+        desde = estado_v["ultima_verificacion_en"] or e["salida_real"]
+        if desde:
+            espera = REINTENTO_VERIFICACION_S if estado_v["ultima_verificacion_ok"] is False else VERIFICAR_CADA_S
+            proxima = _iso(desde + timedelta(seconds=espera))
+    return {"cada_s": VERIFICAR_CADA_S, "pedida_en": _iso(estado_v["verificacion_pedida_en"]),
+            "pedida_por": estado_v["verificacion_pedida_por"], "ultima_en": _iso(estado_v["ultima_verificacion_en"]),
+            "ultima_ok": estado_v["ultima_verificacion_ok"], "proxima": proxima,
+            "pendiente": _verificacion_pendiente(e, estado_v), "historial": historial}
 
 
 def foto_de_planilla(p):
@@ -1104,6 +1276,7 @@ _RUTAS = [
     ("POST", r"/api/camiones/viaje/finalizar", finalizar_viaje),
     ("POST", r"/api/camiones/viaje/eventos", eventos_del_viaje),      # P3-S3
     ("POST", r"/api/camiones/conductor/identificar", identificar_conductor),   # P3-S3
+    ("GET",  r"/api/camiones/conductor/verificacion", verificacion_pendiente),  # P3-S4
     ("GET",  r"/api/camiones", flota),
     ("GET",  r"/api/catalogo", catalogo),
     ("POST", r"/api/envios/cotizar", cotizar_envio),
@@ -1111,6 +1284,7 @@ _RUTAS = [
     ("GET",  r"/api/envios", listar_envios),
     ("GET",  r"/api/envios/(\d{1,9})", detalle_envio),
     ("POST", r"/api/envios/(\d{1,9})/cancelar", cancelar_envio),
+    ("POST", r"/api/envios/(\d{1,9})/verificar-conductor", pedir_verificacion),   # P3-S4
     ("POST", r"/api/alertas/(\d{1,9})/vista", marcar_alerta_vista),
     ("GET",  r"/api/planillas/(\d{1,20})/foto", foto_de_planilla),          # P3-S3
 ]

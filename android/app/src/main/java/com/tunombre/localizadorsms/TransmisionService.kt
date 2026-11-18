@@ -65,6 +65,9 @@ object Config {
     const val URL_API = "https://jesuscotes.sytes.net"
     const val CONSULTA_VIAJE_MS = 15_000L   // cada cuánto se pregunta si hay viaje / cómo va
     const val LATIDO_MS = 60_000L           // cada cuánto se avisa la ubicación mientras está disponible
+    // P3-S4: durante el viaje, cada cuánto se pregunta al servidor si toca verificar al conductor
+    // (el servidor decide: cada 2 min, o ya si un operador lo pidió desde la página).
+    const val CONSULTA_VERIFICACION_MS = 15_000L
 }
 
 // ====================================================================
@@ -83,6 +86,12 @@ object EstadoTransmision {
     var conductorCedula by mutableStateOf<String?>(null)   //        (null = se transmite sin verificar)
     var envioId by mutableStateOf<Int?>(null)              // P3-S2: envío que se está transmitiendo (null = sin viaje)
     var posicion by mutableStateOf<Pair<Double, Double>?>(null)   // última posición enviada (para el mapa)
+
+    // P3-S4: verificación del conductor en pleno viaje (la hace el servicio, sin tocar nada).
+    var verificandoTexto by mutableStateOf<String?>(null)          // != null mientras se verifica
+    var verificandoVista by mutableStateOf<VistaPrevia?>(null)     // lo que ve el ESP32-CAM
+    var ultimaVerificacion by mutableStateOf<String?>(null)        // texto del último resultado
+    var ultimaVerificacionOk by mutableStateOf<Boolean?>(null)     // true = mismo conductor; false = no; null = no se pudo
 }
 
 /**
@@ -164,6 +173,7 @@ class TransmisionService : Service() {
     private var nombreConductor: String? = null      //        se muestra en la notificación
     private var idEnvio: Int? = null                 // P3-S2: viaja en cada paquete como ENVIO:<id>
     private var trabajoSensores: Job? = null         // P3-S3: conexión con el ESP32 de sensores de la carga
+    private var trabajoVerificacion: Job? = null     // P3-S4: verificación del conductor durante el viaje
 
     override fun onCreate() {
         super.onCreate()
@@ -253,7 +263,77 @@ class TransmisionService : Service() {
         tomarWakeLock()
         iniciarBucle(idRecorrido)
         iniciarSensores()
+        iniciarVerificaciones()
         return START_STICKY
+    }
+
+    // ---------------------------------------------------------------
+    //  P3-S4 · Verificación del conductor durante el viaje
+    //  Para la seguridad en la vía: que no cambien de conductor en el camino. Cada 15 s se le
+    //  pregunta al servidor si toca verificar (cada 2 min, o ya si lo pidió un operador). Si toca,
+    //  se reconoce al conductor con el ESP32-CAM de la cabina, igual que al iniciar el viaje.
+    //  El servidor compara con el conductor del viaje y avisa a la empresa si es otra persona.
+    // ---------------------------------------------------------------
+    private fun iniciarVerificaciones() {
+        if (idEnvio == null || trabajoVerificacion?.isActive == true) return
+        trabajoVerificacion = scope.launch {
+            delay(10_000L)                    // que primero arranque la transmisión
+            while (isActive) {
+                try {
+                    revisarVerificacion()
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    // un error de red o de Bluetooth no debe tumbar la transmisión: se reintenta
+                }
+                delay(Config.CONSULTA_VERIFICACION_MS)
+            }
+        }
+    }
+
+    private suspend fun revisarVerificacion() {
+        val envio = idEnvio ?: return
+        val token = Sesion.token(this) ?: return
+        val equipo = VerificacionConductor.pcGuardado(this) ?: return     // sin ESP32-CAM elegido no se puede
+        if (VerificacionConductor.ocupado) return
+        val r = ApiOrbita.verificacionPendiente(token)
+        if (r !is Respuesta.Ok || r.json.optInt("id_envio") != envio) return
+        val motivo = r.json.texto("pendiente") ?: return
+        val pedido = if (motivo == "operador") "La empresa pidió verificar al conductor" else "Verificación del conductor"
+        EstadoTransmision.verificandoTexto = "$pedido: mira de frente a la cámara"
+        EstadoTransmision.verificandoVista = null
+        actualizarNotificacion("$pedido: mira a la cámara")
+        val resultado = try {
+            VerificacionConductor.identificar(
+                this, equipo.direccion,
+                onAvance = { texto -> EstadoTransmision.verificandoTexto = texto },
+                onVista = { vista -> EstadoTransmision.verificandoVista = vista }
+            )
+        } finally {
+            EstadoTransmision.verificandoTexto = null
+            EstadoTransmision.verificandoVista = null
+        }
+        val hora = SimpleDateFormat("HH:mm", Locale.US).format(Date())
+        when (resultado) {
+            is ResultadoVerificacion.Reconocido -> if (resultado.coincide == false) {
+                EstadoTransmision.ultimaVerificacionOk = false
+                EstadoTransmision.ultimaVerificacion = "$hora · ${resultado.nombre} no es el conductor de este viaje" +
+                        (resultado.conductorDelViaje?.let { " ($it)" } ?: "") + ". La empresa recibió una alerta."
+            } else {
+                EstadoTransmision.ultimaVerificacionOk = true
+                EstadoTransmision.ultimaVerificacion = "$hora · Conductor verificado: ${resultado.nombre}"
+            }
+            is ResultadoVerificacion.NoReconocido -> {
+                EstadoTransmision.ultimaVerificacionOk = false
+                EstadoTransmision.ultimaVerificacion = "$hora · No se reconoció al conductor. Se intenta de nuevo en unos segundos: " +
+                        "mira de frente a la cámara."
+            }
+            is ResultadoVerificacion.Fallo -> {
+                EstadoTransmision.ultimaVerificacionOk = null
+                EstadoTransmision.ultimaVerificacion = "$hora · No se pudo verificar: ${resultado.mensaje}"
+            }
+        }
+        actualizarNotificacion(EstadoTransmision.ultimaVerificacion ?: EstadoTransmision.mensaje)
     }
 
     // P3-S3: si el viaje tiene envío y hay un ESP de sensores elegido, se conecta durante todo el viaje.
@@ -270,6 +350,8 @@ class TransmisionService : Service() {
     override fun onDestroy() {
         bucle?.cancel()
         trabajoSensores?.cancel()            // le manda FIN al ESP y cierra el Bluetooth
+        trabajoVerificacion?.cancel()        // P3-S4 (si estaba identificando, cierra el Bluetooth)
+        if (EstadoTransmision.verificandoTexto != null) VerificacionConductor.cancelar()
         scope.cancel()
         soltarWakeLock()
         getSharedPreferences(PREFS, MODE_PRIVATE).edit().putBoolean(PREF_ACTIVA, false).apply()
@@ -279,6 +361,10 @@ class TransmisionService : Service() {
         EstadoTransmision.conductorNombre = null     // el próximo recorrido se verifica de nuevo
         EstadoTransmision.conductorCedula = null
         EstadoTransmision.envioId = null
+        EstadoTransmision.verificandoTexto = null
+        EstadoTransmision.verificandoVista = null
+        EstadoTransmision.ultimaVerificacion = null
+        EstadoTransmision.ultimaVerificacionOk = null
         super.onDestroy()
     }
 

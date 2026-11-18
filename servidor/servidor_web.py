@@ -786,8 +786,15 @@ class ManejadorDeSolicitudes(BaseHTTPRequestHandler):
             self._responder(*acceso.atender("POST", ruta.path, cuerpo, self.headers.get("Cookie"), self._ip()))
         else:
             cuerpo = self.rfile.read(largo) if largo else b""
+            usuario = None
+            if not ruta.path.startswith("/api/camiones/"):     # P3-S4: quién de la página lo pidió
+                try:
+                    sesion = acceso.sesion_de(self.headers.get("Cookie"))
+                    usuario = sesion["usuario"] if sesion else None
+                except Exception:
+                    usuario = None
             estado, datos = api_envios.atender("POST", ruta.path, parse_qs(ruta.query), cuerpo,
-                                               self.headers.get("Authorization"))
+                                               self.headers.get("Authorization"), usuario)
             self._responder(estado, datos)
 
     # P3-S4: si la ruta pide sesión (o un rol) y no la tiene, responde 401/403 y devuelve True.
