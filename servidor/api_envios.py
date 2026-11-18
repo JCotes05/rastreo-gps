@@ -1057,6 +1057,19 @@ def resumen_envio_de_recorrido(id_recorrido):
         return None
 
 
+def envios_en_vivo():
+    """P3-S4: los envíos que se están moviendo (en ruta o recién llegados) con todo su detalle,
+    para ver varios camiones a la vez en Tiempo real. Lista vacía si algo falla."""
+    try:
+        with _bd() as cur:
+            cur.execute(f"""SELECT {COLUMNAS_ENVIO} FROM envios
+                            WHERE estado IN ('en_ruta', 'en_destino') AND id_recorrido IS NOT NULL ORDER BY id""")
+            return [_envio_json(cur, e) for e in cur.fetchall()]
+    except Exception:
+        traceback.print_exc(file=sys.stderr)
+        return []
+
+
 def agregar_envios(lista_recorridos):
     """Le agrega "envio" (resumen o None) a cada recorrido de la lista, con una sola consulta."""
     ids = [str(r["id_recorrido"]) for r in lista_recorridos if r.get("id_recorrido")]
