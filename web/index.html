@@ -562,6 +562,22 @@
   .alerta-texto small { display: block; font-size: 11px; font-weight: 600; opacity: 0.85; }
   .btn-visto { flex: none; border: 0; border-radius: 8px; padding: 6px 10px; background: #fff; color: #C62828; font-size: 11.5px; font-weight: 800; cursor: pointer; }
 
+  /* P3-S4: verificación del conductor durante el viaje */
+  .verif-estado { display: flex; align-items: center; gap: 8px; font-size: 12.5px; font-weight: 700; line-height: 1.35; }
+  .verif-estado small { display: block; font-size: 11px; font-weight: 600; color: var(--medio); }
+  .verif-punto { flex: none; width: 10px; height: 10px; border-radius: 50%; background: #A7B1BE; }
+  .verif-punto.ok { background: #2E7D32; }
+  .verif-punto.mal { background: #C62828; }
+  .verif-punto.espera { background: #D49100; animation: verif-latido 1.2s ease-in-out infinite; }
+  @keyframes verif-latido { 50% { opacity: 0.35; } }
+  .verif-lista { margin-top: 8px; }
+  .verif-fila { display: grid; grid-template-columns: 44px 18px 1fr auto; gap: 6px; align-items: baseline; padding: 5px 0;
+                border-top: 1px solid rgba(167, 177, 190, 0.55); font-size: 12px; }
+  .verif-fila b { font-weight: 800; min-width: 0; overflow-wrap: anywhere; }
+  .verif-fila small { color: var(--medio); font-weight: 600; white-space: nowrap; }
+  .verif-fila .ok { color: #2E7D32; font-weight: 800; }
+  .verif-fila .mal { color: #C62828; font-weight: 800; }
+
   /* Formulario de nuevo envío */
   .enlace-ejemplo { display: block; margin: 0 2px 10px auto; padding: 0; border: 0; background: none; color: var(--gris-azul); font-size: 12px; font-weight: 700; text-decoration: underline; cursor: pointer; }
   .panel-titulo { display: flex; align-items: center; gap: 8px; margin-bottom: 2px; font-size: 12px; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase; }
@@ -3476,6 +3492,9 @@
     if (a.tipo === 'desvio') { return 'Desvío de ' + textoDistancia(a.valor_max) + ' de la ruta'; }
     if (a.tipo === 'retraso') { return 'Retraso de ' + textoRetraso(a.valor_max).replace(' tarde', ''); }
     if (a.tipo === 'carga_abierta') { return 'Carga abierta en plena ruta'; }      // P3-S3
+    if (a.tipo === 'conductor') {                                                  // P3-S4
+      return a.valor_max >= 1 ? 'Otro conductor al volante' : 'No se pudo verificar al conductor';
+    }
     return a.tipo;
   }
 
@@ -3866,6 +3885,7 @@
       '</div>' +
       (e.alertas.length ? '<div class="sub-titulo">Alertas' + (activas ? ' activas: ' + activas : '') + '</div>' + htmlAlertas(e, true) : '') +
       htmlSensores(e, 8) +
+      htmlVerificacion(e) +
       '<div class="sub-titulo">Puntos de control</div>' +
       '<div class="caja-clara lista-puntos">' + htmlListaPuntos(e) + '</div>' +
       '<div class="sub-titulo">Datos del envío</div>' +
@@ -3883,6 +3903,47 @@
         htmlFila('Ruta', (e.plan.fuente === 'ors-hgv' ? 'openrouteservice (camión)' : 'OSRM (carro, tiempos ×1,25)')) +
       '</div>' +
       (e.estado === 'asignado' ? '<button class="btn btn-secundario btn-ancho solo-operador" onclick="cancelarEnvio(' + e.id + ')">Cancelar envío</button>' : '');
+  }
+
+  // P3-S4: verificación del conductor durante el viaje (cada 2 min y cuando la pide un operador).
+  var ORIGEN_VERIF = { inicio: 'Al iniciar', periodica: 'Automática', operador: 'Pedida' };
+  function htmlVerificacion(e) {
+    var v = e.verificacion;
+    if (!v || (e.estado === 'asignado' && !v.historial.length) || e.estado === 'cancelado') { return ''; }
+    var estado;
+    if (v.pedida_en) {
+      estado = '<span class="verif-punto espera"></span><span>Verificación pedida a las ' + horaDe(v.pedida_en) +
+        (v.pedida_por ? ' por ' + escaparHtml(v.pedida_por) : '') + '<small>La app la hace en menos de 15 s: el conductor debe mirar a la cámara.</small></span>';
+    } else if (v.ultima_en) {
+      estado = '<span class="verif-punto ' + (v.ultima_ok ? 'ok' : 'mal') + '"></span><span>' +
+        (v.ultima_ok ? 'Mismo conductor del viaje' : 'La última verificación NO fue el conductor del viaje') +
+        '<small>Última: ' + horaDe(v.ultima_en) + (v.proxima ? ' · próxima: ' + horaDe(v.proxima) : '') + '</small></span>';
+    } else if (e.estado === 'en_ruta') {
+      estado = '<span class="verif-punto"></span><span>Aún no se ha verificado en ruta<small>' +
+        (v.proxima ? 'Primera verificación automática: ' + horaDe(v.proxima) : 'Cada ' + Math.round(v.cada_s / 60) + ' min') + '</small></span>';
+    } else {
+      estado = '<span class="verif-punto"></span><span>Sin verificaciones en ruta</span>';
+    }
+    var filas = v.historial.map(function (h) {
+      var quien = h.resultado === 'reconocido' ? escaparHtml(h.nombre || h.cedula) : 'No reconocido';
+      var marca = h.coincide === true ? '<span class="ok">✓</span>' : (h.coincide === false ? '<span class="mal">✗</span>' : '<span>·</span>');
+      return '<div class="verif-fila"><small>' + horaDe(h.momento) + '</small>' + marca +
+        '<b>' + quien + ' <small>' + (ORIGEN_VERIF[h.origen] || '') + '</small></b>' +
+        '<small>' + String(h.similitud.toFixed(2)).replace('.', ',') + '</small></div>';
+    }).join('');
+    return '<div class="sub-titulo">Verificación del conductor</div>' +
+      '<div class="caja-clara">' +
+        '<div class="verif-estado">' + estado + '</div>' +
+        (filas ? '<div class="verif-lista">' + filas + '</div>' : '') +
+        (e.estado === 'en_ruta' && !v.pedida_en
+          ? '<button type="button" class="btn btn-secundario btn-ancho solo-operador" onclick="pedirVerificacion(' + e.id + ')">Verificar conductor ahora</button>' : '') +
+      '</div>';
+  }
+  function pedirVerificacion(id) {
+    pedirApi('POST', '/api/envios/' + id + '/verificar-conductor', {}).then(function () {
+      mostrarAvisoMapa('Verificación pedida: el conductor debe mirar a la cámara');
+      refrescarDetalle(false);
+    }).catch(function (e) { mostrarAvisoMapa(e.message); });
   }
 
   function limpiarEnvioDelMapa() {

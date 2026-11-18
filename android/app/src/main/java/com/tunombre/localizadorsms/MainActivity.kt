@@ -759,7 +759,15 @@ class MainActivity : ComponentActivity() {
                 onVista = { vista -> (fase as? FaseVerificacion.EnCurso)?.let { fase = it.copy(vista = vista) } }
             )
             when (resultado) {
-                is ResultadoVerificacion.Reconocido -> {
+                is ResultadoVerificacion.Reconocido -> if (resultado.coincide == false) {
+                    // P3-S4: al reanudar un viaje en ruta, solo puede seguir el conductor que lo inició.
+                    fase = FaseVerificacion.Fallida(
+                        "Otro conductor",
+                        "${resultado.nombre} no es el conductor de este viaje" +
+                                (resultado.conductorDelViaje?.let { " ($it)" } ?: "") +
+                                ". La empresa recibió una alerta: no se cambia de conductor en la vía."
+                    )
+                } else {
                     fase = FaseVerificacion.Inactiva
                     empezarEnvio(resultado.cedula, resultado.nombre)
                 }

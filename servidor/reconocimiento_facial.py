@@ -296,34 +296,50 @@ def decidir(base, jpgs):
     return dict(resultado, estado="no_reconocido", similitud=round(mejor, 2), motivo=motivo)
 
 
-def identificar(cur, placa, jpgs):
+def identificar(cur, placa, jpgs, id_envio=None, origen=None, comparar=False, referencia=None):
     """Decide, cuenta los fallos del camión y deja el intento en la tabla identificaciones.
     Si reconoce al conductor, guarda también el recorte más parecido (la foto que muestra la
-    planilla de la página, para probar que se tomó en vivo al empezar el viaje)."""
+    planilla de la página, para probar que se tomó en vivo al empezar el viaje).
+
+    P3-S4: id_envio y origen ('inicio' | 'periodica' | 'operador') ligan el intento al envío.
+    Con comparar=True (verificación en pleno viaje) se dice si es el MISMO conductor del viaje:
+    r["coincide"] = reconocido y (referencia es None o su cédula es la referencia)."""
     import psycopg2.errors
     _revisar_espera(placa)
     base = _base(cur)
     r = decidir(base, jpgs)
     _anotar(placa, r["estado"] == "reconocido")
+    if comparar:
+        r["coincide"] = r["estado"] == "reconocido" and (referencia is None or r["cedula"] == referencia)
     foto = None
     if r["estado"] == "reconocido":
         foto = jpgs[r.pop("indice_foto")]      # el recorte que más se pareció a ESE conductor
     datos = (placa, r["estado"], r.get("cedula"), r["similitud"], r["rostros"], r["con_rostro"], r.get("motivo"))
-    # La columna foto llega con sql/p3s3_foto.sql; si todavía no existe, se guarda el intento sin ella.
-    cur.execute("SAVEPOINT con_foto")
-    try:
-        cur.execute("""INSERT INTO identificaciones (placa, resultado, cedula, similitud, rostros, con_rostro, motivo, foto)
-                       VALUES (%s, %s, %s, %s, %s, %s, %s, %s)""", datos + (foto,))
-        # Las fotos se guardan DIAS_FOTO días: después se vacían (app_rastreo no puede borrar filas).
-        cur.execute("""UPDATE identificaciones SET foto = NULL
-                       WHERE foto IS NOT NULL AND momento < now() - make_interval(days => %s)""", (DIAS_FOTO,))
-        cur.execute("RELEASE SAVEPOINT con_foto")
-    except psycopg2.errors.UndefinedColumn:
-        cur.execute("ROLLBACK TO SAVEPOINT con_foto")
-        cur.execute("""INSERT INTO identificaciones (placa, resultado, cedula, similitud, rostros, con_rostro, motivo)
-                       VALUES (%s, %s, %s, %s, %s, %s, %s)""", datos)
+    # Columnas que llegaron después: foto (sql/p3s3_foto.sql) e id_envio, origen y coincide
+    # (sql/p3s4_verificacion.sql). Si la base todavía no las tiene, se guarda sin ellas.
+    intentos = (
+        ("id_envio, origen, coincide, foto", (id_envio, origen, r.get("coincide"), foto)),
+        ("foto", (foto,)),
+        ("", ()),
+    )
+    for extra, valores in intentos:
+        cur.execute("SAVEPOINT intento_rostro")
+        try:
+            columnas = "placa, resultado, cedula, similitud, rostros, con_rostro, motivo" + (", " + extra if extra else "")
+            marcas = ", ".join(["%s"] * (7 + len(valores)))
+            cur.execute(f"INSERT INTO identificaciones ({columnas}) VALUES ({marcas})", datos + valores)
+            if foto is not None and "foto" in extra:
+                # Las fotos se guardan DIAS_FOTO días: después se vacían (app_rastreo no puede borrar filas).
+                cur.execute("""UPDATE identificaciones SET foto = NULL
+                               WHERE foto IS NOT NULL AND momento < now() - make_interval(days => %s)""", (DIAS_FOTO,))
+            cur.execute("RELEASE SAVEPOINT intento_rostro")
+            break
+        except psycopg2.errors.UndefinedColumn:
+            cur.execute("ROLLBACK TO SAVEPOINT intento_rostro")
     print(f"[ROSTRO] {placa}: {r['estado']} {r.get('cedula') or ''} sim={r['similitud']} "
-          f"({r['con_rostro']}/{r['rostros']} con rostro, {r['similitudes']})", flush=True)
+          f"({r['con_rostro']}/{r['rostros']} con rostro, {r['similitudes']})"
+          + (f" envio={id_envio} origen={origen}" if id_envio else "")
+          + ("" if "coincide" not in r else f" coincide={r['coincide']}"), flush=True)
     return r
 
 

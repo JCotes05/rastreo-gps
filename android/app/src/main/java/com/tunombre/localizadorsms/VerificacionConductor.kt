@@ -44,7 +44,14 @@ import java.util.concurrent.atomic.AtomicReference
 
 /** Resultado de pedirle al computador que identifique al conductor. */
 sealed class ResultadoVerificacion {
-    data class Reconocido(val cedula: String, val nombre: String, val similitud: Float) : ResultadoVerificacion()
+    // coincide (P3-S4): en pleno viaje, si es el MISMO conductor que inició el viaje (null = no aplica).
+    data class Reconocido(
+        val cedula: String,
+        val nombre: String,
+        val similitud: Float,
+        val coincide: Boolean? = null,
+        val conductorDelViaje: String? = null
+    ) : ResultadoVerificacion()
     data class NoReconocido(val similitud: Float, val motivo: String? = null) : ResultadoVerificacion()
     data class Fallo(val mensaje: String) : ResultadoVerificacion()
 }
@@ -80,6 +87,10 @@ object VerificacionConductor {
     // La conexión en curso, para poder cortarla si se cancela o se agota el tiempo.
     private val socketActual = AtomicReference<BluetoothSocket?>(null)
     @Volatile private var tiempoAgotado = false
+
+    /** P3-S4: hay una identificación en curso (la de la pantalla o la periódica del servicio). */
+    @Volatile var ocupado = false
+        private set
 
     // ---------------------------------------------------------------
     //  Bluetooth del celular y permisos
@@ -154,6 +165,7 @@ object VerificacionConductor {
         }
 
         tiempoAgotado = false
+        ocupado = true
         return coroutineScope {
             // Vigilante: si se pasa el tiempo, cierra la conexión y eso destraba la espera.
             val vigilante = launch {
@@ -177,6 +189,7 @@ object VerificacionConductor {
             } finally {
                 vigilante.cancel()
                 cancelar()
+                ocupado = false
             }
         }
     }
@@ -254,7 +267,12 @@ object VerificacionConductor {
                     if (!PATRON_CEDULA.matches(cedula)) {
                         ResultadoVerificacion.Fallo("El servidor mandó una cédula inválida.")
                     } else {
-                        ResultadoVerificacion.Reconocido(cedula, j.texto("nombre") ?: cedula, similitud)
+                        val v = j.optJSONObject("verificacion")
+                        ResultadoVerificacion.Reconocido(
+                            cedula, j.texto("nombre") ?: cedula, similitud,
+                            coincide = if (v != null && v.has("coincide") && !v.isNull("coincide")) v.optBoolean("coincide") else null,
+                            conductorDelViaje = v?.optJSONObject("conductor_del_viaje")?.texto("nombre")
+                        )
                     }
                 } else {
                     ResultadoVerificacion.NoReconocido(similitud, j.texto("motivo"))

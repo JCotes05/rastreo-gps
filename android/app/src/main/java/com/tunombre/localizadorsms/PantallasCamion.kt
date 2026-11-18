@@ -1326,6 +1326,9 @@ private fun ContenidoEnViaje(
 
         if (aviso != null) TarjetaAviso(aviso, avisoEsError, acciones.onCerrarAviso)
 
+        // P3-S4: verificación del conductor en pleno viaje (cada 2 min o cuando la pide la empresa).
+        if (transmitiendo) TarjetaVerificacionEnViaje()
+
         // P3-S3: carga abierta en plena ruta (lo dice el ESP en vivo o la alerta del servidor).
         val sensoresEnVivo = transmitiendo && EstadoSensores.activo && EstadoSensores.envioId == viaje.id
         val cargaAbiertaEnRuta = viaje.estado == "en_ruta" &&
@@ -1493,6 +1496,36 @@ private fun ContenidoEnViaje(
             onConfirmar = { confirmarDetener = false; acciones.onDetener() },
             onCancelar = { confirmarDetener = false }
         )
+    }
+}
+
+/**
+ * P3-S4: mientras el servicio verifica al conductor en pleno viaje, se ve lo que ve el ESP32-CAM
+ * (para ubicar la cara). Después queda el último resultado: verde si es el mismo conductor, rojo
+ * si no (la empresa ya recibió la alerta) y naranja si no se pudo hacer.
+ */
+@Composable
+private fun TarjetaVerificacionEnViaje() {
+    val texto = EstadoTransmision.verificandoTexto
+    if (texto != null) {
+        TarjetaOrbita(borde = Ambar) {
+            Etiqueta("Verificación del conductor", color = Ambar)
+            Spacer(modifier = Modifier.height(6.dp))
+            val vista = EstadoTransmision.verificandoVista
+            if (vista != null) {
+                Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+                    VistaPreviaCamara(vista, onClick = {})
+                }
+            }
+            TextoSuave(texto, tamano = 14.sp)
+        }
+        return
+    }
+    val ultima = EstadoTransmision.ultimaVerificacion ?: return
+    when (EstadoTransmision.ultimaVerificacionOk) {
+        true -> TarjetaEstado(VerdeOk, "Conductor verificado", ultima)
+        false -> TarjetaEstado(RojoAlerta, "Verificación del conductor", ultima)
+        null -> TarjetaEstado(NaranjaMarca, "Verificación del conductor", ultima)
     }
 }
 

@@ -86,6 +86,14 @@ object ApiOrbita {
     suspend fun identificarConductor(token: String, rostros: List<String>): Respuesta =
         pedir("POST", "/api/camiones/conductor/identificar", JSONObject().put("rostros", JSONArray(rostros)), token)
 
+    /**
+     * P3-S4: ¿toca verificar al conductor ahora? Durante el viaje el servidor pide una verificación
+     * cada 2 min, o cuando un operador la pide desde la página.
+     * Responde {"pendiente": "periodica" | "operador" | null, "id_envio", "cada_s"}.
+     */
+    suspend fun verificacionPendiente(token: String): Respuesta =
+        pedir("GET", "/api/camiones/conductor/verificacion", null, token)
+
     // ---------------------------------------------------------------
     //  Un pedido HTTP (en segundo plano; la red no se usa en el hilo principal)
     // ---------------------------------------------------------------
