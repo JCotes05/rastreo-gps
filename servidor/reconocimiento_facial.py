@@ -18,7 +18,8 @@ Reglas contra falsos positivos (las de comun.py, P3-S1):
   - similitud de un conductor = promedio de sus 3 muestras más parecidas;
   - el más parecido debe superar UMBRAL (0.55, o más si se parece a otro conductor registrado)
     y sacarle MARGEN (0.10) al segundo;
-  - TODOS los recortes con rostro (mínimo 2) deben aceptar a la MISMA persona;
+  - MAYORÍA: al menos 2 recortes deben aceptar a la MISMA persona y ninguno a otra
+    (antes se exigían TODOS; se cambió con los datos del entrenamiento del P3-S4);
   - tras 2 no reconocidos seguidos, el camión espera 30 s (insistir no sirve).
 Cada intento queda en la tabla identificaciones (evidencia para el informe). Si se reconoce al
 conductor, se guarda también el recorte más parecido: la página lo muestra en la planilla del
@@ -274,12 +275,17 @@ def decidir(base, jpgs):
     if len(con_rostro) < MIN_ROSTROS_COINCIDENTES:
         return dict(resultado, estado="no_reconocido", similitud=round(mejor, 2),
                     motivo="No se vio bien el rostro. Mire de frente a la cámara, con buena luz.")
-    cedulas = {e["cedula"] for e in con_rostro}
-    if len(cedulas) == 1 and None not in cedulas:
-        cedula = cedulas.pop()
-        sim = sum(e["similitud"] for e in con_rostro) / len(con_rostro)
+    # Regla de MAYORÍA (P3-S4, datos de reconocimiento/entrenamiento): basta con que al menos
+    # MIN_ROSTROS_COINCIDENTES recortes acepten a la misma persona y que ningún recorte acepte
+    # a otra. Un recorte movido o de lado ya no tumba el intento. Con los datos del 18-nov-2026
+    # el conductor pasó en el 92 % de los intentos (82 % exigiendo todos) y 0/83 impostores.
+    aceptadas = [e["cedula"] for e in con_rostro if e["cedula"]]
+    if len(set(aceptadas)) == 1 and len(aceptadas) >= MIN_ROSTROS_COINCIDENTES:
+        cedula = aceptadas[0]
+        votos = [i for i, e in enumerate(evaluaciones) if e["cedula"] == cedula]
+        sim = sum(evaluaciones[i]["similitud"] for i in votos) / len(votos)
         return dict(resultado, estado="reconocido", cedula=cedula, nombre=base.conductores[cedula][0],
-                    similitud=round(sim, 2))
+                    similitud=round(sim, 2), indice_foto=max(votos, key=lambda i: evaluaciones[i]["similitud"]))
     motivos = {e["motivo"] for e in con_rostro}
     if "aceptado" in motivos:
         motivo = "Los rostros no coincidieron con una misma persona."
@@ -301,7 +307,7 @@ def identificar(cur, placa, jpgs):
     _anotar(placa, r["estado"] == "reconocido")
     foto = None
     if r["estado"] == "reconocido":
-        foto = jpgs[max(range(len(jpgs)), key=lambda i: r["similitudes"][i])]
+        foto = jpgs[r.pop("indice_foto")]      # el recorte que más se pareció a ESE conductor
     datos = (placa, r["estado"], r.get("cedula"), r["similitud"], r["rostros"], r["con_rostro"], r.get("motivo"))
     # La columna foto llega con sql/p3s3_foto.sql; si todavía no existe, se guarda el intento sin ella.
     cur.execute("SAVEPOINT con_foto")
