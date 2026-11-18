@@ -16,8 +16,14 @@ Que hace
   rapido (S16) ocupa 2,4 MB y con Bluetooth no cabe (4,25 MB de 3,9 MB). Medido el 11-nov-2026.
 
 Hardware
-  ESP32-CAM AI-Thinker (4 MB de flash, 4 MB de PSRAM) con camara GC2145 (modulo RHYX M21-45)
-  u OV2640. Se programa con un adaptador USB-serie FTDI (o la base ESP32-CAM-MB):
+  ESP32-CAM AI-Thinker (4 MB de flash, 4 MB de PSRAM). Camara (el programa la reconoce sola):
+    - OV3660 (modulo TY-OV3660), la de P3-S4 en adelante: 3 MP, mejor imagen que la GC2145.
+      Se voltea y se le baja la saturacion (ajustes del ejemplo de Espressif). Si no arranca
+      a 20 MHz, el programa reintenta a 10 MHz. Con la base ESP32-CAM-MB queda en COM4 (CH340).
+    - GC2145 (modulo RHYX M21-45), la de P3-S3, u OV2640.
+  OJO: al cambiar de camara hay que volver a registrar a los conductores con la camara nueva
+  (las huellas tomadas con otra camara dan similitud mas baja; ver "Registrar a un conductor").
+  Se programa con un adaptador USB-serie FTDI (o la base ESP32-CAM-MB):
       FTDI 5V  -> 5V         FTDI GND -> GND
       FTDI TX  -> U0R (GPIO3) FTDI RX  -> U0T (GPIO1)
       Para subir el programa: GPIO0 a GND y RESET; despues se suelta GPIO0 y RESET otra vez.
