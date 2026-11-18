@@ -8,3 +8,7 @@ __pycache__/
 # Calibración (dice quién participó) y respaldos locales de la base
 calibracion.csv
 respaldo_*/
+
+# Copias de las huellas (P3-S4): nunca a GitHub
+conductores_rostros*.json*
+fotos_esp*/

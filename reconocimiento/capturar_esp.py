@@ -6,7 +6,7 @@ guarda esos recortes en reconocimiento/fotos_esp/<cedula>/ para registrarlo desp
 registrar.py --fotos. Así el conductor queda registrado con la MISMA cámara con la que
 se le va a reconocer en la cabina (sale mejor que registrarlo con la cámara del portátil).
 
-    py capturar_esp.py --puerto COM6 --cedula 1001000001
+    py capturar_esp.py --puerto COM4 --cedula 1001000001      (COM6 con el FTDI)
     py registrar.py --cedula 1001000001 --nombre "Jesus Cotes" --fotos fotos_esp\\1001000001
 
 Opciones: --cantidad 10 (fotos a tomar), --probar (solo muestra si el ESP ve el rostro).
@@ -45,7 +45,32 @@ def abrir(puerto):
         sys.exit(1)
     time.sleep(0.3)
     conexion.reset_input_buffer()
+    if not responde(conexion):
+        # P3-S4: con la base ESP32-CAM-MB (chip CH340), Windows deja la placa detenida al
+        # abrir el puerto. Un pulso de RESET (RTS) con DTR suelto la arranca normal.
+        print("La placa no respondió; reiniciándola...")
+        conexion.rts = True
+        time.sleep(0.2)
+        conexion.rts = False
+        time.sleep(7)                     # arranque: cámara + Bluetooth
+        conexion.reset_input_buffer()
+        if not responde(conexion):
+            print("\n[ERROR] El ESP32-CAM no responde. Revisa el puerto y dale RESET a la placa.\n")
+            sys.exit(1)
     return conexion
+
+
+def responde(conexion):
+    """True si la placa contesta PONG a un PING."""
+    conexion.write(b"PING\n")
+    limite = time.time() + 1.5
+    recibido = b""
+    while time.time() < limite:
+        recibido += conexion.read(conexion.in_waiting or 1)
+        if b"PONG" in recibido:
+            conexion.reset_input_buffer()
+            return True
+    return False
 
 
 def lineas(conexion, segundos):

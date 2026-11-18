@@ -8,7 +8,8 @@
   junto con Bluetooth (S8) tarda ~14 s por rostro en el ESP32; el rapido (S16) no cabe.
   Detectar, en cambio, toma ~0,1-0,2 s en la placa.
 
-  Placa: ESP32-CAM AI-Thinker con camara GC2145 (RHYX M21-45) u OV2640.
+  Placa: ESP32-CAM AI-Thinker con camara OV3660 (TY-OV3660, desde P3-S4), GC2145 (RHYX M21-45)
+  u OV2640. El programa reconoce el sensor solo y le pone sus ajustes (ver iniciar_camara).
   Nucleo: esp32 de Espressif **2.0.17** (el 3.x ya no trae los detectores de esp-dl).
   Detector: HumanFaceDetectMSR01 + HumanFaceDetectMNP01 (dos etapas, viene en el nucleo).
 
@@ -115,6 +116,15 @@ String campo(const String &linea, const String &clave) {   // lee CLAVE:valor po
 // ------------------------------------------------------------------
 //  Camara y detector
 // ------------------------------------------------------------------
+const char *nombre_sensor(uint16_t pid) {
+  switch (pid) {
+    case OV3660_PID: return "OV3660";
+    case OV2640_PID: return "OV2640";
+    case GC2145_PID: return "GC2145";
+    default: return "desconocido";
+  }
+}
+
 bool iniciar_camara() {
   camera_config_t c = {};
   c.pin_pwdn = PWDN_GPIO_NUM; c.pin_reset = RESET_GPIO_NUM; c.pin_xclk = XCLK_GPIO_NUM;
@@ -123,20 +133,42 @@ bool iniciar_camara() {
   c.pin_d3 = Y5_GPIO_NUM; c.pin_d2 = Y4_GPIO_NUM; c.pin_d1 = Y3_GPIO_NUM; c.pin_d0 = Y2_GPIO_NUM;
   c.pin_vsync = VSYNC_GPIO_NUM; c.pin_href = HREF_GPIO_NUM; c.pin_pclk = PCLK_GPIO_NUM;
   c.xclk_freq_hz = 20000000; c.ledc_timer = LEDC_TIMER_0; c.ledc_channel = LEDC_CHANNEL_0;
-  c.pixel_format = PIXFORMAT_RGB565;       // el detector trabaja sobre RGB565 (la GC2145 no da JPEG)
+  c.pixel_format = PIXFORMAT_RGB565;       // el detector trabaja sobre RGB565 (sirve en los 3 sensores)
   c.frame_size = FRAMESIZE_QVGA;           // 320x240
   c.fb_count = 2;
   c.fb_location = CAMERA_FB_IN_PSRAM;
   c.grab_mode = CAMERA_GRAB_LATEST;
   esp_err_t e = ESP_FAIL;
-  for (int n = 1; n <= 3 && e != ESP_OK; n++) {   // algunos sensores tardan en despertar
+  for (int n = 1; n <= 4 && e != ESP_OK; n++) {   // algunos sensores tardan en despertar
+    if (n == 4) c.xclk_freq_hz = 10000000;         // ultimo intento con el reloj mas lento
     e = esp_camera_init(&c);
-    if (e != ESP_OK) { Serial.printf("camara: intento %d fallo 0x%x\n", n, e); delay(300); }
+    if (e != ESP_OK) { Serial.printf("camara: intento %d fallo 0x%x\n", n, e); esp_camera_deinit(); delay(300); }
   }
   if (e != ESP_OK) return false;
   sensor_t *s = esp_camera_sensor_get();
+  // La OV3660 en RGB565 a 20 MHz manda los datos mas rapido de lo que el ESP32 los recibe:
+  // salen cuadros incompletos (cam_hal: EV-EOF-OVF, FB-SIZE 149760 != 153600). A 10 MHz no.
+  if (s->id.PID == OV3660_PID && c.xclk_freq_hz > 10000000) {
+    esp_camera_deinit();
+    delay(100);
+    c.xclk_freq_hz = 10000000;
+    if (esp_camera_init(&c) != ESP_OK) return false;
+    s = esp_camera_sensor_get();
+  }
   if (s->id.PID == OV2640_PID) s->set_vflip(s, 1);  // la OV2640 del AI-Thinker sale al reves
-  Serial.printf("camara: OK, sensor PID 0x%x\n", s->id.PID);
+  if (s->id.PID == OV3660_PID) {                    // P3-S4: modulo TY-OV3660
+    // El ejemplo de Espressif la voltea (set_vflip 1), pero en el TY-OV3660 eso la deja
+    // de cabeza (probado el 18-nov-2026): este modulo sale derecho sin voltear.
+    s->set_vflip(s, 0);
+    s->set_saturation(s, -2);                       // de fabrica sale muy saturada
+  }
+  // La exposicion y el balance de blancos automaticos tardan unos cuadros en acomodarse.
+  for (int k = 0; k < 8; k++) {
+    camera_fb_t *fb = esp_camera_fb_get();
+    if (fb) esp_camera_fb_return(fb);
+  }
+  Serial.printf("camara: OK, sensor %s (PID 0x%x), reloj %d MHz\n", nombre_sensor(s->id.PID), s->id.PID,
+                c.xclk_freq_hz / 1000000);
   return true;
 }
 
@@ -318,8 +350,9 @@ String direccion_bt() {
 
 void estado(Stream &canal) {
   char t[200];
-  snprintf(t, sizeof t, "ESTADO;CAMARA:%s;SENSOR:0x%x;RAM_LIBRE:%u;PSRAM_LIBRE:%u;BT:%s;MAC:%s;VER:2",
-           camara_ok ? "OK" : "ERROR", camara_ok ? esp_camera_sensor_get()->id.PID : 0,
+  uint16_t pid = camara_ok ? esp_camera_sensor_get()->id.PID : 0;
+  snprintf(t, sizeof t, "ESTADO;CAMARA:%s;SENSOR:0x%x;MODELO:%s;RAM_LIBRE:%u;PSRAM_LIBRE:%u;BT:%s;MAC:%s;VER:3",
+           camara_ok ? "OK" : "ERROR", pid, camara_ok ? nombre_sensor(pid) : "-",
            ESP.getFreeHeap(), ESP.getFreePsram(), NOMBRE_BT, direccion_bt().c_str());
   enviar(canal, t);
 }
