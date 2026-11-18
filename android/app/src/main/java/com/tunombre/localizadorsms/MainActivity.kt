@@ -322,6 +322,7 @@ class MainActivity : ComponentActivity() {
 
     private val acciones = AccionesCamion(
         onDisponible = { cambiarDisponibilidad(it) },
+        onDocumentos = { soat, tecno, alTerminar -> guardarDocumentos(soat, tecno, alTerminar) },
         onBotonViaje = { botonViaje() },
         onSinVerificar = { empezarEnvio(null, null) },
         onFinalizar = { finalizarViaje() },
@@ -566,6 +567,26 @@ class MainActivity : ComponentActivity() {
         posicionTelefono = u.latitude to u.longitude
         val r = ApiOrbita.ubicacion(t, u.latitude, u.longitude)
         if (r is Respuesta.Error && r.codigo == 401 && token == t) sesionVencida()
+    }
+
+    /** Guarda las fechas nuevas del SOAT y la técnico-mecánica. alTerminar(null) = guardado; si no, el error. */
+    private fun guardarDocumentos(soatVence: String, tecnomecanicaVence: String, alTerminar: (String?) -> Unit) {
+        val t = token ?: return
+        lifecycleScope.launch {
+            when (val r = ApiOrbita.documentos(t, soatVence, tecnomecanicaVence)) {
+                is Respuesta.Ok -> {
+                    r.json.optJSONObject("camion")?.let { actualizarCamion(it) }
+                    alTerminar(null)
+                    mostrarAviso("Documentos actualizados.", error = false)
+                }
+                is Respuesta.Error -> if (r.codigo == 401) {
+                    alTerminar(null)
+                    sesionVencida()
+                } else {
+                    alTerminar(r.mensaje)
+                }
+            }
+        }
     }
 
     private fun cambiarDisponibilidad(disponible: Boolean) {
