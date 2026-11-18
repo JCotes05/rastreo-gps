@@ -737,11 +737,29 @@
   .ingreso-estado { margin: 14px 0 0; min-height: 18px; text-align: center; font-size: 12.5px; font-weight: 700; color: #FFB4A9; }
   .ingreso-estado.neutro { color: var(--gris-azul); }
 
-  /* Bloque del usuario al final del menú */
-  .panel-usuario .quien b { display: block; font-size: 13.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .panel-usuario .quien small { font-size: 11.5px; font-weight: 700; color: var(--gris-azul); }
-  .panel-usuario .acciones-usuario { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 10px; }
-  .panel-usuario .btn { flex: 1 1 auto; padding: 8px 8px; font-size: 12px; }
+  /* Botón de la cuenta (entre el menú y el logo) y su tarjeta */
+  body.cuenta-abierta .boton-usuario { background: var(--claro); color: var(--oscuro); }
+  .tarjeta-usuario {
+    position: fixed; top: 72px; left: 70px; z-index: 1210;
+    width: 290px; max-width: calc(100vw - 28px); padding: 16px;
+    background: var(--medio); color: var(--claro); border-radius: 18px;
+    box-shadow: 0 24px 60px -20px rgba(11, 31, 58, 0.75);
+  }
+  .tarjeta-usuario .quien { display: flex; align-items: center; gap: 12px; }
+  .avatar-usuario {
+    flex: 0 0 auto; width: 44px; height: 44px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    background: var(--claro); color: var(--oscuro); font-size: 16px; font-weight: 800;
+  }
+  .tarjeta-usuario .quien div { min-width: 0; }
+  .tarjeta-usuario .quien b { display: block; font-size: 14.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .tarjeta-usuario .quien small { display: block; margin-top: 2px; font-size: 11.5px; font-weight: 700; color: var(--gris-azul); }
+  .tarjeta-usuario .acciones-usuario { display: grid; gap: 7px; margin-top: 14px; }
+  .tarjeta-usuario .btn { padding: 10px 8px; font-size: 12.5px; text-align: left; padding-left: 14px; }
+  .tarjeta-usuario .sesion-vence { margin: 12px 0 0; font-size: 11px; font-weight: 600; color: var(--gris-azul); text-align: center; }
+  @media (max-width: 720px) {
+    .tarjeta-usuario { top: calc(62px + env(safe-area-inset-top, 0px)); left: 10px; max-width: calc(100vw - 20px); }
+  }
 
   /* Ventanas (cambiar contraseña, usuarios) */
   .fondo-ventana {
@@ -800,6 +818,14 @@
       <path d="M4 7h16M4 12h16M4 17h16"/>
     </svg>
     <span class="insignia" id="insignia-menu" hidden></span>  <!-- P3-S2: alertas activas -->
+  </button>
+  <!-- P3-S4: cuenta del usuario -->
+  <button class="boton-menu boton-usuario" id="boton-usuario" onclick="alternarCuenta()" aria-label="Mi cuenta" title="Mi cuenta"
+          aria-expanded="false" aria-controls="tarjeta-usuario">
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+      <circle cx="12" cy="8" r="4"/>
+      <path d="M4 20.5c1.4-3.8 4.4-5.7 8-5.7s6.6 1.9 8 5.7"/>
+    </svg>
   </button>
   <div class="titulo-flotante">
     <img class="logo-marca" alt="Orbita" width="101" height="36" draggable="false"
@@ -1059,19 +1085,23 @@
       </div>
     </div>
 
-    <!-- P3-S4: quién está conectado -->
-    <div class="panel panel-usuario" id="panel-usuario">
-      <div class="quien"><b id="usuario-nombre">—</b><small id="usuario-rol"></small></div>
-      <div class="acciones-usuario">
-        <button class="btn btn-secundario solo-admin" onclick="abrirUsuarios()">👥 Usuarios</button>
-        <button class="btn btn-secundario" onclick="abrirCambioClave()">Cambiar contraseña</button>
-        <button class="btn btn-secundario" onclick="salir()">Salir</button>
-      </div>
-    </div>
-
     <p class="eslogan-menu">Cada kilómetro bajo tu radar</p>
   </div>
 </aside>
+
+<!-- P3-S4: tarjeta de la cuenta (se abre con el botón de la persona) -->
+<div class="tarjeta-usuario" id="tarjeta-usuario" role="dialog" aria-label="Mi cuenta" hidden>
+  <div class="quien">
+    <span class="avatar-usuario" id="usuario-iniciales" aria-hidden="true"></span>
+    <div><b id="usuario-nombre">—</b><small id="usuario-rol"></small></div>
+  </div>
+  <div class="acciones-usuario">
+    <button class="btn btn-secundario solo-admin" onclick="abrirUsuarios()">👥 Usuarios</button>
+    <button class="btn btn-secundario" onclick="abrirCambioClave()">🔑 Cambiar contraseña</button>
+    <button class="btn btn-secundario" onclick="salir()">↩ Salir</button>
+  </div>
+  <p class="sesion-vence" id="sesion-vence"></p>
+</div>
 
 <!-- P3-S4: cambiar la contraseña propia -->
 <div class="fondo-ventana" id="ventana-clave" hidden onclick="if (event.target === this) cerrarVentana('ventana-clave')">
@@ -1155,14 +1185,33 @@
     }, 50);
   }
 
-  function aplicarSesion(u) {
+  function aplicarSesion(u, vence) {
     sesionActual = u;
     document.body.classList.remove('sin-sesion', 'rol-admin', 'rol-operador', 'rol-consulta');
     document.body.classList.add('rol-' + u.rol);
     document.getElementById('usuario-nombre').textContent = u.nombre;
     document.getElementById('usuario-rol').textContent = u.rol_nombre + ' · ' + u.usuario;
     document.getElementById('clave-usuario-oculto').value = u.usuario;
+    document.getElementById('usuario-iniciales').textContent = u.nombre.split(/\s+/).filter(Boolean)
+      .slice(0, 2).map(function (p) { return p.charAt(0); }).join('').toUpperCase();
+    document.getElementById('boton-usuario').title = u.nombre + ' (' + u.rol_nombre + ')';
+    document.getElementById('sesion-vence').textContent = vence ? 'La sesión se cierra sola a las ' +
+      new Date(vence).toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' }) : '';
   }
+
+  // Tarjeta de la cuenta: se abre con el botón de la persona y se cierra al tocar fuera.
+  function alternarCuenta(abrir) {
+    var tarjeta = document.getElementById('tarjeta-usuario');
+    var nuevo = (typeof abrir === 'boolean') ? abrir : tarjeta.hidden;
+    if (nuevo) { alternarMenu(false); }
+    tarjeta.hidden = !nuevo;
+    document.body.classList.toggle('cuenta-abierta', nuevo);
+    document.getElementById('boton-usuario').setAttribute('aria-expanded', nuevo ? 'true' : 'false');
+  }
+  document.addEventListener('click', function (ev) {
+    if (document.getElementById('tarjeta-usuario').hidden) { return; }
+    if (!ev.target.closest('#tarjeta-usuario') && !ev.target.closest('#boton-usuario')) { alternarCuenta(false); }
+  });
 
   function ingresar(ev) {
     ev.preventDefault();
@@ -1195,7 +1244,7 @@
   function comprobarSesion() {
     fetchOriginal('/api/sesion').then(function (r) {
       return r.json().catch(function () { return {}; }).then(function (c) {
-        if (r.ok && c.usuario) { aplicarSesion(c.usuario); }
+        if (r.ok && c.usuario) { aplicarSesion(c.usuario, c.vence); }
         else if (r.status === 401) { mostrarIngreso(); }
         else { throw new Error(); }
       });
@@ -1210,6 +1259,7 @@
   function cerrarVentana(id) { document.getElementById(id).hidden = true; }
 
   function abrirCambioClave() {
+    alternarCuenta(false);
     ['clave-actual', 'clave-nueva', 'clave-repetir'].forEach(function (id) { document.getElementById(id).value = ''; });
     document.getElementById('aviso-clave').textContent = '';
     document.getElementById('ventana-clave').hidden = false;
@@ -1231,7 +1281,7 @@
 
   var NOMBRES_ROL = { admin: 'Administrador', operador: 'Operador', consulta: 'Consulta' };
   function abrirUsuarios() {
-    alternarMenu(false);
+    alternarCuenta(false);
     document.getElementById('aviso-usuarios').textContent = '';
     document.getElementById('ventana-usuarios').hidden = false;
     cargarUsuarios();
@@ -1299,7 +1349,7 @@
 
   document.getElementById('ingreso-logo').src = document.querySelector('.logo-marca').src;
   document.addEventListener('keydown', function (ev) {
-    if (ev.key === 'Escape') { cerrarVentana('ventana-clave'); cerrarVentana('ventana-usuarios'); }
+    if (ev.key === 'Escape') { cerrarVentana('ventana-clave'); cerrarVentana('ventana-usuarios'); alternarCuenta(false); }
   });
   comprobarSesion();
 
@@ -1582,6 +1632,7 @@
   function alternarMenu(abrir) {
     var nuevo = (typeof abrir === 'boolean') ? abrir : !document.body.classList.contains('menu-abierto');
     document.body.classList.toggle('menu-abierto', nuevo);
+    if (nuevo && typeof alternarCuenta === 'function') { alternarCuenta(false); }   // P3-S4
     porId('boton-menu').setAttribute('aria-expanded', nuevo ? 'true' : 'false');
     porId('menu-lateral').setAttribute('aria-hidden', nuevo ? 'false' : 'true');
   }
