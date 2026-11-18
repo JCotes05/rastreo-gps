@@ -769,8 +769,21 @@ def catalogo(p):
     }
 
 
+def _vencer_disponibilidad(cur):
+    """
+    Un camión 'disponible' que no reporta su ubicación hace más de UBICACION_RECIENTE_MIN min
+    (cerró la app o el celular perdió señal) pasa a 'no_disponible'. Así la página no lo muestra
+    como disponible en una ubicación vieja. Cuando el conductor vuelva a abrir la app, verá
+    "No disponible" y tendrá que activar "Disponible" otra vez (eso envía su ubicación actual).
+    """
+    cur.execute(f"""UPDATE camiones SET estado = 'no_disponible'
+                    WHERE estado = 'disponible'
+                      AND (ubicacion_en IS NULL OR ubicacion_en < now() - interval '{UBICACION_RECIENTE_MIN} minutes')""")
+
+
 def flota(p):
     with _bd() as cur:
+        _vencer_disponibilidad(cur)
         cur.execute(f"""SELECT {COLUMNAS_CAMION} FROM camiones
                         ORDER BY CASE estado WHEN 'en_ruta' THEN 0 WHEN 'asignado' THEN 1
                                              WHEN 'disponible' THEN 2 ELSE 3 END, placa""")
@@ -793,10 +806,38 @@ def _motivo_no_apto(c, peso, tipo):
     return None
 
 
+def _motivo_descarte(c, peso, tipo):
+    """Por qué un camión registrado no aparece entre los candidatos (texto para la página)."""
+    if c["estado"] in ("asignado", "en_ruta"):
+        return "ya tiene un viaje asignado"
+    if c["estado"] != "disponible":
+        if c["ubicacion_en"] is None:
+            return "no está disponible (nunca ha activado \"Disponible\" en la app)"
+        return f"no está disponible (la app reportó por última vez hace {_texto_tiempo(c['ubicacion_en'])})"
+    if c["capacidad_kg"] < peso:
+        return f"su capacidad ({c['capacidad_kg']:,} kg) es menor que el peso".replace(",", ".")
+    if c["carroceria"] not in TIPOS_CARGA[tipo][1]:
+        return f"su carrocería ({CARROCERIAS[c['carroceria']].lower()}) no sirve para {TIPOS_CARGA[tipo][0].lower()}"
+    vencidos = _documentos_vencidos(c)
+    if vencidos:
+        return "tiene vencido " + " y ".join(vencidos)
+    return "hay otros camiones más adecuados"
+
+
+def _texto_tiempo(momento):
+    minutos = _minutos_desde(momento)
+    if minutos < 60:
+        return f"{minutos} min"
+    if minutos < 48 * 60:
+        return f"{round(minutos / 60)} h"
+    return f"{round(minutos / 1440)} días"
+
+
 def _candidatos(cur, origen, peso, tipo):
-    cur.execute(f"""SELECT {COLUMNAS_CAMION} FROM camiones WHERE estado = 'disponible'
-                    AND ubicacion_en > now() - interval '{UBICACION_RECIENTE_MIN} minutes'""")
-    disponibles = cur.fetchall()
+    _vencer_disponibilidad(cur)
+    cur.execute(f"SELECT {COLUMNAS_CAMION} FROM camiones ORDER BY placa")
+    todos = cur.fetchall()
+    disponibles = [c for c in todos if c["estado"] == "disponible"]
     con_capacidad = [c for c in disponibles if c["capacidad_kg"] >= peso]
     con_carroceria = [c for c in con_capacidad if c["carroceria"] in TIPOS_CARGA[tipo][1]]
     aptos = [c for c in con_carroceria if not _documentos_vencidos(c)]
@@ -814,8 +855,13 @@ def _candidatos(cur, origen, peso, tipo):
         datos["distancia_origen_m"] = round(c["_dist"])
         datos["recomendado"] = i == 0
         candidatos.append(datos)
-    resumen = {"disponibles": len(disponibles), "con_capacidad": len(con_capacidad),
-               "con_carroceria": len(con_carroceria), "aptos": len(aptos)}
+    elegidos = {c["placa"] for c in candidatos}
+    descartados = [{"placa": c["placa"], "configuracion_nombre": CONFIGURACIONES[c["configuracion"]][0],
+                    "carroceria_nombre": CARROCERIAS[c["carroceria"]], "capacidad_kg": c["capacidad_kg"],
+                    "motivo": _motivo_descarte(c, peso, tipo)}
+                   for c in todos if c["placa"] not in elegidos]
+    resumen = {"registrados": len(todos), "disponibles": len(disponibles), "con_capacidad": len(con_capacidad),
+               "con_carroceria": len(con_carroceria), "aptos": len(aptos), "descartados": descartados}
     return candidatos, resumen
 
 

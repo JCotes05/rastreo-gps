@@ -604,6 +604,11 @@
   .candidato input { margin: 3px 0 0; accent-color: #1565D8; }
   .candidato b { font-size: 13.5px; }
   .candidato small { display: block; margin-top: 2px; font-size: 11.5px; font-weight: 600; color: var(--medio); line-height: 1.35; }
+  .descartados { margin-top: 9px; font-size: 12px; }
+  .descartados summary { cursor: pointer; font-weight: 700; color: var(--medio); padding: 4px 2px; }
+  .descartado { margin-top: 5px; padding: 7px 12px; background: var(--claro); color: var(--oscuro); border-radius: 10px; opacity: 0.75; }
+  .descartado b { font-size: 12.5px; }
+  .descartado small { display: block; margin-top: 2px; font-size: 11px; font-weight: 600; color: var(--medio); line-height: 1.35; }
 
   /* Marcas del mapa */
   .marca-punto { background: none; border: 0; }
@@ -3561,6 +3566,18 @@
         });
         caja.appendChild(fila);
       });
+    }
+    var descartados = (c.flota && c.flota.descartados) || [];
+    if (descartados.length) {
+      var det = document.createElement('details');
+      det.className = 'descartados';
+      det.open = !c.candidatos.length;
+      det.innerHTML = '<summary>' + (descartados.length === 1 ? '1 camión más no sirve' : descartados.length + ' camiones más no sirven') +
+        ' para este envío</summary>' + descartados.map(function (d) {
+          return '<div class="descartado"><b>' + escaparHtml(d.placa) + '</b> · ' + escaparHtml(d.configuracion_nombre) + ' · ' +
+            escaparHtml(d.carroceria_nombre) + ' · ' + textoKg(d.capacidad_kg) + '<small>' + escaparHtml(d.motivo) + '</small></div>';
+        }).join('');
+      caja.appendChild(det);
     }
     porId('btn-crear-envio').disabled = !placaElegida;
     porId('resultado-cotizacion').scrollIntoView({ block: 'start', behavior: 'smooth' });
