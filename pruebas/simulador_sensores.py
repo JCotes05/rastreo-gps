@@ -37,6 +37,7 @@ import sys
 import time
 import urllib.error
 import urllib.request
+import sesion_web  # P3-S4
 from datetime import datetime, timedelta, timezone
 
 COLOMBIA = timezone(timedelta(hours=-5))
@@ -109,6 +110,7 @@ def main():
     parser.add_argument("--ya", action="store_true")
     args = parser.parse_args()
 
+    sesion_web.iniciar(args.servidor)    # P3-S4: /api/envios/<id> pide sesión
     api = Api(args.servidor, args.token)
     if not api.token:
         if not args.placa:
