@@ -490,7 +490,7 @@
   body.modo-envios #mapa, body.modo-envios #mapa-historico { visibility: hidden; }
   body.modo-envios #mapa-envios { visibility: visible; }
   body.modo-envios .ventana-datos, body.modo-envios .boton-centrar, body.modo-envios .punto-vivo,
-  body.modo-envios .tarjeta-planilla, body.modo-envios .tarjeta-viaje, body.modo-historicos .tarjeta-viaje { display: none !important; }
+  body.modo-envios .tarjeta-planilla, body.modo-envios .pila-viajes, body.modo-historicos .pila-viajes { display: none !important; }
 
   .selector-modo { grid-template-columns: repeat(3, 1fr); }
   .modo { position: relative; white-space: nowrap; }
@@ -676,14 +676,22 @@
   .icono-flota.atenuado { opacity: 0.4; }
   .leaflet-container.armado { cursor: crosshair !important; }
 
-  /* Tarjeta del viaje en Tiempo Real */
-  .tarjeta-viaje {
+  /* Tarjetas de los viajes en Tiempo Real: una por cada vehículo con envío.
+     Todas muestran solo el resumen; la del vehículo elegido se despliega. */
+  .pila-viajes {
     position: fixed; top: 80px; right: 14px; z-index: 1190;
-    width: 320px; max-width: calc(100vw - 28px); padding: 10px 14px 12px;
+    width: 320px; max-width: calc(100vw - 28px); max-height: calc(100vh - 100px);
+    display: flex; flex-direction: column; gap: 8px; overflow-y: auto; overscroll-behavior: contain;
+    padding: 2px 2px 14px; margin: -2px -2px 0 0;
+  }
+  .tarjeta-viaje {
+    flex: none; padding: 10px 14px 12px;
     background: rgba(230, 233, 239, 0.97); color: var(--oscuro);
     border-radius: 16px; border-left: 7px solid #1565D8; box-shadow: var(--sombra);
   }
-  .tarjeta-viaje.con-alerta { border-left-color: #C62828; }
+  .tarjeta-viaje.plegada { padding-bottom: 10px; }
+  .tarjeta-viaje.activa { box-shadow: var(--sombra), 0 0 0 2px var(--oscuro); }
+  .tarjeta-viaje.con-alerta { border-left-color: #C62828 !important; }
   .viaje-cabecera {
     display: flex; align-items: center; gap: 8px; width: 100%; padding: 0; border: 0; background: none;
     color: inherit; text-align: left; cursor: pointer;
@@ -708,13 +716,15 @@
   .leyenda-planeada i { width: 26px; height: 0; border-top: 4px dotted #5C6B80; flex: none; }
 
   @media (max-width: 1000px) {
-    body.menu-abierto .tarjeta-viaje { display: none; }
+    body.menu-abierto .pila-viajes { display: none; }
   }
   @media (max-width: 720px) {
-    .tarjeta-viaje {
+    .pila-viajes {
       top: calc(100px + env(safe-area-inset-top, 0px)); left: 10px; right: 10px; width: auto; max-width: none;
-      padding: 8px 12px 9px; border-radius: 12px; border-left-width: 6px;
+      max-height: 55vh; gap: 6px;
     }
+    .tarjeta-viaje { padding: 8px 12px 9px; border-radius: 12px; border-left-width: 6px; }
+    .tarjeta-viaje.plegada { padding-bottom: 8px; }
     .tarjeta-viaje .tarjeta-datos b { font-size: 12.5px; }
     .modo { font-size: 12px; padding: 9px 4px; }
     .panel input[type=text], .panel input[type=tel], .panel input[type=number], .panel input[type=password], .panel select { font-size: 16px; padding: 7px 10px; }
@@ -906,8 +916,8 @@
   <div id="planilla-contenido"></div>
 </div>
 
-<!-- ============ Tarjeta del viaje en vivo: avance, retraso y alertas del envío (P3-S2) ============ -->
-<div class="tarjeta-viaje" id="tarjeta-viaje" role="region" aria-label="Viaje en curso" hidden></div>
+<!-- ============ Tarjetas de los viajes en vivo: una por vehículo con envío (P3-S2 / P3-S4) ============ -->
+<div class="pila-viajes" id="tarjeta-viaje" role="region" aria-label="Viajes en curso" hidden></div>
 
 <button class="boton-centrar" onclick="centrarEnVehiculo()" title="Centrar en el vehículo" aria-label="Centrar en el vehículo">
   <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#E6E9EF" stroke-width="2.2" stroke-linecap="round">
@@ -4347,9 +4357,8 @@
 
   function actualizarEnvioVivo(e) {
     envioVivo = e;
-    var tarjeta = porId('tarjeta-viaje');
+    pintarTarjetaViaje();             // las tarjetas de TODOS los vehículos con envío
     if (!e) {
-      tarjeta.hidden = true;
       if (rutaVivo.id !== null) { capaPlanVivo.clearLayers(); capaPuntosVivo.clearLayers(); rutaVivo = { id: null, puntos: null }; firmaPuntosVivo = ''; }
       capaEventosVivo.clearLayers();
       firmaEventosVivo = '';
@@ -4370,8 +4379,6 @@
       capaPuntosVivo.clearLayers();
       dibujarPuntos(capaPuntosVivo, e.puntos_control);
     }
-    pintarTarjetaViaje();
-    tarjeta.hidden = false;
   }
   // P3-S4: una alerta nueva de CUALQUIER vehículo se anuncia sobre el mapa; si es del
   // seleccionado, además despliega su tarjeta.
@@ -4384,17 +4391,21 @@
       }
     });
   }
-  function htmlTarjetaViaje(e) {
+  // Una tarjeta por vehículo: solo la del seleccionado puede estar desplegada.
+  function htmlTarjetaViaje(v) {
+    var e = v.datos.envio, elegido = String(v.id) === String(seleccionado), abierta = elegido && !tarjetaViajePlegada;
     var p = e.progreso, siguiente = proximoPunto(e), eta = etaDe(e, siguiente);
     var activas = e.alertas.filter(function (a) { return a.activa; });
     var nivel = e.estado === 'en_ruta' ? (p.nivel_retraso || 'a_tiempo') : null;
-    var cabecera = '<button type="button" class="viaje-cabecera" onclick="alternarTarjetaViaje()" aria-expanded="' + !tarjetaViajePlegada + '">' +
-      '<span class="viaje-chips"><span class="placa-chip" style="--c:' + (colorSeleccionado || '#1565D8') + '">' + escaparHtml(e.placa) + '</span>' +
+    var clases = 'tarjeta-viaje' + (abierta ? '' : ' plegada') + (elegido ? ' activa' : '') + (activas.length ? ' con-alerta' : '');
+    var cabecera = '<div class="' + clases + '" style="border-left-color:' + v.color + '">' +
+      '<button type="button" class="viaje-cabecera" data-id="' + escaparHtml(v.id) + '" aria-expanded="' + abierta + '">' +
+      '<span class="viaje-chips"><span class="placa-chip" style="--c:' + v.color + '">' + escaparHtml(e.placa) + '</span>' +
       '<span class="envio-codigo">' + e.codigo + '</span>' + chipEstado(e.estado) + (nivel ? chipNivel(nivel, p.retraso_s) : '') +
       (activas.length ? '<span class="chip chip-alerta">⚠ ' + activas.length + '</span>' : '') + '</span>' +
       '<span class="viaje-pct">' + p.porcentaje + ' %</span>' +
       '<svg class="viaje-flecha" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg></button>';
-    if (tarjetaViajePlegada) { return cabecera; }
+    if (!abierta) { return cabecera + '</div>'; }
     return cabecera +
       '<div class="envio-ruta">' + htmlRutaCorta(e.origen.direccion, e.destino.direccion) + '</div>' +
       '<div class="barra-avance"><i style="width:' + p.porcentaje + '%"></i></div>' +
@@ -4409,21 +4420,26 @@
         : (p.llegada_estimada ? '<div class="viaje-linea">Llegada estimada: <b>' + horaDe(p.llegada_estimada) + '</b></div>' : '')) +
       htmlSensoresCorto(e) +
       htmlAlertas({ alertas: activas }, true) +
-      '<button type="button" class="enlace-detalle" onclick="abrirEnvio(' + e.id + ')">Ver el envío completo →</button>';
+      '<button type="button" class="enlace-detalle" onclick="abrirEnvio(' + e.id + ')">Ver el envío completo →</button></div>';
   }
   function pintarTarjetaViaje() {
-    if (!envioVivo) { return; }
-    var html = htmlTarjetaViaje(envioVivo);
-    var tarjeta = porId('tarjeta-viaje');
-    tarjeta.classList.toggle('con-alerta', envioVivo.alertas.some(function (a) { return a.activa; }));
-    tarjeta.style.borderLeftColor = tarjeta.classList.contains('con-alerta') ? '' : (colorSeleccionado || '');   // P3-S4
-    tarjeta.classList.toggle('plegada', tarjetaViajePlegada);
-    if (html !== firmaTarjetaViaje) { firmaTarjetaViaje = html; tarjeta.innerHTML = html; }
+    var pila = porId('tarjeta-viaje');
+    var ids = Object.keys(vehiculos).filter(function (k) { return vehiculos[k].datos.envio; }).sort(function (a, b) {
+      return nombreVehiculo(vehiculos[a].datos).localeCompare(nombreVehiculo(vehiculos[b].datos));
+    });
+    var html = ids.map(function (k) { return htmlTarjetaViaje(vehiculos[k]); }).join('');
+    pila.hidden = !ids.length;
+    if (html !== firmaTarjetaViaje) { firmaTarjetaViaje = html; pila.innerHTML = html; }
   }
-  function alternarTarjetaViaje() {
-    tarjetaViajePlegada = !tarjetaViajePlegada;
-    pintarTarjetaViaje();
-  }
+  // Tocar el resumen de otro vehículo lo elige y despliega su tarjeta;
+  // tocar el del que ya está elegido la pliega o la despliega.
+  porId('tarjeta-viaje').addEventListener('click', function (ev) {
+    var boton = ev.target.closest('.viaje-cabecera');
+    if (!boton) { return; }
+    var id = boton.getAttribute('data-id');
+    if (id === String(seleccionado)) { tarjetaViajePlegada = !tarjetaViajePlegada; pintarTarjetaViaje(); }
+    else { tarjetaViajePlegada = false; seleccionar(id, true); }
+  });
   // El envío dentro de la planilla flotante (al tocar el camión).
   function htmlEnvioPlanilla(e) {
     if (!e) { return ''; }
