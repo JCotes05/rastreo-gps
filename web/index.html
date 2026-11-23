@@ -803,28 +803,52 @@
   .ventana h2 { margin: 0 0 4px; font-size: 16px; font-weight: 800; }
   .ventana .ayuda-chica { margin: 0 0 6px; font-size: 12px; line-height: 1.4; color: var(--gris-azul); font-weight: 600; }
   .ventana .fila-botones { display: flex; gap: 8px; margin-top: 16px; }
-  /* Guía de bienvenida */
-  .ventana.guia { position: relative; max-width: 420px; padding: 22px 22px 18px; text-align: center; }
-  .guia-saltar {
-    position: absolute; top: 10px; right: 12px; padding: 6px 8px; border: 0; background: none;
-    color: var(--gris-azul); font-size: 12px; font-weight: 700; cursor: pointer;
+  /* Guía interactiva: oscurece la página, ilumina lo que explica y una burbuja dice qué hacer.
+     Va por encima del menú y de las tarjetas, pero por debajo de la pantalla de ingreso. */
+  .guia { position: fixed; inset: 0; z-index: 2700; pointer-events: none; }
+  .guia[hidden] { display: none; }
+  .guia-bloqueo { position: fixed; pointer-events: auto; background: transparent; }
+  .guia-foco {
+    position: fixed; pointer-events: none; border-radius: 14px;
+    box-shadow: 0 0 0 4px #F2A900, 0 0 0 9999px rgba(11, 31, 58, 0.62);
+    transition: top 0.3s ease, left 0.3s ease, width 0.3s ease, height 0.3s ease, box-shadow 0.3s ease;
   }
-  .guia-saltar:hover { color: var(--claro); text-decoration: underline; }
-  .guia-icono {
-    width: 64px; height: 64px; margin: 6px auto 12px; border-radius: 50%;
-    display: flex; align-items: center; justify-content: center; font-size: 32px; background: rgba(11, 31, 58, 0.5);
+  .guia-foco.sin-objetivo { box-shadow: 0 0 0 0 transparent, 0 0 0 9999px rgba(11, 31, 58, 0.62); }
+  .guia-foco.pide-clic { animation: guia-latido 1.4s ease-in-out infinite; }
+  @keyframes guia-latido {
+    0%, 100% { box-shadow: 0 0 0 4px #F2A900, 0 0 0 9999px rgba(11, 31, 58, 0.62); }
+    50% { box-shadow: 0 0 0 9px rgba(242, 169, 0, 0.55), 0 0 0 9999px rgba(11, 31, 58, 0.62); }
   }
-  .ventana.guia h2 { font-size: 18px; margin-bottom: 8px; }
-  .guia-texto { font-size: 13.5px; line-height: 1.5; font-weight: 600; text-align: left; min-height: 120px; }
-  .guia-texto p { margin: 0 0 8px; }
-  .guia-texto ul { margin: 0; padding-left: 20px; }
-  .guia-texto li { margin-bottom: 5px; }
-  .guia-texto b { color: #fff; }
-  .guia-puntos { display: flex; justify-content: center; gap: 6px; margin-top: 14px; }
-  .guia-puntos i { width: 8px; height: 8px; border-radius: 50%; background: rgba(167, 177, 190, 0.45); transition: width 0.2s ease; }
-  .guia-puntos i.activo { width: 22px; border-radius: 999px; background: var(--claro); }
-  .ventana.guia .fila-botones .btn { flex: 1; }
-  #guia-atras[hidden] { display: none; }
+  .guia-burbuja {
+    position: fixed; pointer-events: auto; width: 330px; max-width: calc(100vw - 24px);
+    padding: 14px 16px 14px; border-radius: 16px; background: #fff; color: var(--oscuro);
+    box-shadow: 0 18px 40px -12px rgba(0, 0, 0, 0.55); border-top: 5px solid #F2A900;
+    transition: top 0.3s ease, left 0.3s ease;
+  }
+  .guia-burbuja.sacudir { animation: guia-sacudir 0.35s ease; }
+  @keyframes guia-sacudir { 25% { transform: translateX(-6px); } 75% { transform: translateX(6px); } }
+  .guia-cabeza { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+  .guia-contador { font-size: 11px; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase; color: var(--gris-azul); }
+  .guia-saltar { padding: 4px 2px; border: 0; background: none; color: var(--medio); font-size: 12px; font-weight: 700; cursor: pointer; }
+  .guia-saltar:hover { text-decoration: underline; }
+  .guia-burbuja h2 { margin: 6px 0 6px; font-size: 16.5px; font-weight: 800; }
+  .guia-texto { font-size: 13px; line-height: 1.5; font-weight: 600; color: var(--carbon); }
+  .guia-texto p { margin: 0 0 6px; }
+  .guia-texto ul { margin: 0; padding-left: 18px; }
+  .guia-texto li { margin-bottom: 4px; }
+  .guia-hacer {
+    margin-top: 10px; padding: 8px 10px; border-radius: 10px; background: rgba(242, 169, 0, 0.18);
+    font-size: 12.5px; font-weight: 800; color: #6B4500;
+  }
+  .guia-hacer[hidden] { display: none; }
+  .guia-botones { display: flex; gap: 8px; margin-top: 12px; }
+  .guia-botones .btn { flex: 1; padding: 9px 8px; font-size: 13px; }
+  .guia-botones .btn-secundario { color: var(--oscuro); border-color: var(--gris-azul); }
+  .guia-botones .btn-principal { background: var(--oscuro); color: #fff; }
+  .guia-botones .btn[hidden] { display: none; }
+  @media (max-width: 720px) {
+    .guia-burbuja { left: 12px !important; right: 12px; width: auto; }
+  }
   .ventana h3 { margin: 18px 0 2px; font-size: 11px; font-weight: 800; letter-spacing: 0.1em; text-transform: uppercase; color: var(--gris-azul); }
   .usuario-fila { margin-top: 8px; padding: 10px 12px; border-radius: 12px; background: rgba(11, 31, 58, 0.42); }
   .usuario-fila.inactivo { opacity: 0.55; }
@@ -1198,20 +1222,26 @@
   <p class="sesion-vence" id="sesion-vence"></p>
 </div>
 
-<!-- Guía de bienvenida: se muestra la primera vez que cada usuario entra (y desde "Mi cuenta") -->
-<div class="fondo-ventana" id="ventana-guia" hidden onclick="if (event.target === this) cerrarGuia()">
-  <div class="ventana guia" role="dialog" aria-modal="true" aria-labelledby="guia-titulo">
-    <button type="button" class="guia-saltar" onclick="cerrarGuia()">Saltar guía</button>
-    <div class="guia-icono" id="guia-icono" aria-hidden="true"></div>
+<!-- Guía interactiva: sale cada vez que alguien inicia sesión (y desde "Mi cuenta") -->
+<div class="guia" id="guia" hidden>
+  <div class="guia-bloqueo"></div><div class="guia-bloqueo"></div><div class="guia-bloqueo"></div><div class="guia-bloqueo"></div>
+  <div class="guia-bloqueo"></div>
+  <div class="guia-foco" id="guia-foco"></div>
+  <div class="guia-burbuja" id="guia-burbuja" role="dialog" aria-modal="true" aria-labelledby="guia-titulo">
+    <div class="guia-cabeza">
+      <span class="guia-contador" id="guia-contador"></span>
+      <button type="button" class="guia-saltar" onclick="cerrarGuia()">Saltar guía ✕</button>
+    </div>
     <h2 id="guia-titulo"></h2>
     <div class="guia-texto" id="guia-texto"></div>
-    <div class="guia-puntos" id="guia-puntos" aria-hidden="true"></div>
-    <div class="fila-botones">
+    <div class="guia-hacer" id="guia-hacer" hidden></div>
+    <div class="guia-botones">
       <button type="button" class="btn btn-secundario" id="guia-atras" onclick="pasoGuia(-1)">← Atrás</button>
       <button type="button" class="btn btn-principal" id="guia-siguiente" onclick="pasoGuia(1)">Siguiente →</button>
     </div>
   </div>
 </div>
+
 
 <!-- P3-S4: cambiar la contraseña propia -->
 <div class="fondo-ventana" id="ventana-clave" hidden onclick="if (event.target === this) cerrarVentana('ventana-clave')">
@@ -1307,7 +1337,7 @@
     document.getElementById('boton-usuario').title = u.nombre + ' (' + u.rol_nombre + ')';
     document.getElementById('sesion-vence').textContent = vence ? 'La sesión se cierra sola a las ' +
       new Date(vence).toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' }) : '';
-    mostrarGuiaSiEsNueva();
+    guiaTrasIngresar();       // la guía sale cada vez que alguien inicia sesión
   }
 
   // Tarjeta de la cuenta: se abre con el botón de la persona y se cierra al tocar fuera.
@@ -1338,6 +1368,7 @@
       return r.json().catch(function () { return {}; }).then(function (c) {
         if (!r.ok) { throw new Error(c.error || 'Error ' + r.status + ' del servidor.'); }
         estado.textContent = 'Bienvenido, ' + c.usuario.nombre + '…';
+        try { sessionStorage.setItem('orbita-guia-al-entrar', '1'); } catch (e) { /* sin almacenamiento: no sale la guía */ }
         location.reload();
       });
     }).catch(function (e) {
@@ -1369,87 +1400,207 @@
 
   function cerrarVentana(id) { document.getElementById(id).hidden = true; }
 
-  // ---- Guía de bienvenida ----
-  // Sale sola la primera vez que cada usuario entra desde este navegador; luego
-  // se puede volver a ver desde "Mi cuenta". Se recuerda en el navegador (localStorage).
-  var pasoGuiaActual = 0;
+  // ---- Guía interactiva ----
+  // Sale cada vez que alguien inicia sesión con usuario y contraseña (no al recargar),
+  // y se puede volver a ver desde "Mi cuenta". Oscurece la página, ilumina lo que
+  // explica y, en algunos pasos, pide al usuario que toque él mismo el elemento.
+  var guia = { abierta: false, paso: 0, objetivo: null, token: 0, reloj: null };
+
+  function guiaAVivo() {
+    alternarCuenta(false);
+    if (modoActual !== 'tiempo-real') { cambiarVista('tiempo-real'); }
+    alternarMenu(false);
+  }
+  function guiaEnModo(vista) {
+    alternarCuenta(false);
+    if (modoActual !== vista) { cambiarVista(vista); }
+    if (vista === 'envios' && typeof mostrarListaEnvios === 'function' && vistaEnvios !== 'lista') { mostrarListaEnvios(); }
+    if (vista === 'historicos' && vistaActual !== 'lista' && typeof volverALista === 'function') { volverALista(); }
+    alternarMenu(true);
+  }
   function pasosGuia() {
     var opera = sesionActual && sesionActual.rol !== 'consulta';
-    return [
-      { icono: '🛰️', titulo: 'Bienvenido a Orbita',
-        texto: '<p>Orbita sigue en tiempo real a los camiones de carga. El celular de cada conductor envía su posición cada 5 segundos.</p>' +
-               '<p>En esta guía corta verá las funciones principales de la página. Puede saltarla cuando quiera.</p>' },
-      { icono: '☰', titulo: 'El menú',
-        texto: '<p>Con el botón <b>☰</b> (arriba a la izquierda) abre el menú. Ahí cambia entre los tres modos:</p>' +
-               '<ul><li><b>📍 En vivo</b>: dónde están los camiones ahora.</li>' +
-               '<li><b>🕐 Históricos</b>: recorridos pasados.</li>' +
-               '<li><b>📦 Envíos</b>: los viajes de carga.</li></ul>' +
-               '<p>Un número rojo sobre el menú indica alertas sin atender.</p>' },
-      { icono: '📍', titulo: 'En vivo',
-        texto: '<ul><li>Cada camión es un ícono de color sobre el mapa, con su recorrido.</li>' +
-               '<li>Arriba a la derecha hay una <b>tarjeta por cada camión con envío</b>: avance, retraso y alertas.</li>' +
-               '<li>Toque una tarjeta o un camión para ver su detalle y la <b>planilla del conductor</b>.</li>' +
-               '<li>El botón de la mira (abajo a la derecha) centra el mapa.</li></ul>' },
-      { icono: '🕐', titulo: 'Históricos',
-        texto: '<ul><li>Elija un rango de fechas para ver los recorridos que se hicieron.</li>' +
-               '<li>Toque un recorrido para dibujarlo en el mapa, con su conductor y su envío.</li>' +
-               '<li>Si el recorrido tenía envío, también verá la ruta planeada y los puntos de control.</li></ul>' },
-      { icono: '📦', titulo: 'Envíos',
-        texto: opera
-          ? '<ul><li>Con <b>Nuevo envío</b> registra el cliente, el origen, el destino y la carga.</li>' +
-            '<li>Orbita propone el <b>camión más adecuado</b> y calcula la ruta con sus puntos de control.</li>' +
-            '<li>En el detalle sigue el avance, los tiempos, los kilómetros y los eventos de la carga.</li></ul>'
-          : '<ul><li>Aquí está la lista de envíos con su estado.</li>' +
-            '<li>En el detalle de cada uno se ven la ruta, los puntos de control, los tiempos, los kilómetros y los eventos de la carga.</li>' +
-            '<li>Su usuario es de <b>consulta</b>: puede mirar todo, pero no crear ni cancelar envíos.</li></ul>' },
-      { icono: '⚠️', titulo: 'Alertas y seguridad',
-        texto: '<ul><li>Orbita avisa si un camión va con <b>retraso</b> o se <b>desvía</b> de la ruta.</li>' +
-               '<li>Durante el viaje, la cámara de la cabina <b>verifica al conductor</b> cada cierto tiempo.' +
-               (opera ? ' También puede pedir una verificación con <b>Verificar conductor ahora</b>.' : '') + '</li>' +
-               '<li>Los sensores de la carga registran frenadas bruscas, huecos y aperturas de la puerta.</li></ul>' },
-      { icono: '👤', titulo: 'Su cuenta',
-        texto: '<p>Con el botón <b>👤</b>, junto al menú, puede:</p>' +
-               '<ul><li>volver a ver esta guía,</li><li>cambiar su contraseña,</li><li>salir de la página.</li></ul>' +
-               '<p>¡Listo! Ya puede empezar a usar Orbita.</p>' }
+    var pasos = [
+      { titulo: 'Bienvenido a Orbita', preparar: guiaAVivo,
+        texto: '<p>Orbita sigue en tiempo real a los camiones de carga: el celular de cada conductor envía su posición cada 5 segundos.</p>' +
+               '<p>Esta guía le mostrará la página paso a paso. En algunos pasos le pediremos que toque un botón.</p>' },
+      { sel: '#boton-menu', clic: true, titulo: 'El menú', preparar: guiaAVivo,
+        texto: '<p>Desde el menú se maneja toda la página.</p>',
+        hacer: '👉 Toque el botón ☰ resaltado para abrirlo.' },
+      { sel: '.selector-modo', titulo: 'Los tres modos', preparar: function () { guiaAVivo(); alternarMenu(true); },
+        texto: '<ul><li><b>📍 En vivo</b>: dónde están los camiones ahora.</li>' +
+               '<li><b>🕐 Históricos</b>: los recorridos ya hechos.</li>' +
+               '<li><b>📦 Envíos</b>: los viajes de carga.</li></ul>' },
+      { sel: '#seccion-vivo', titulo: 'Vehículos en vivo', preparar: function () { guiaAVivo(); alternarMenu(true); },
+        texto: '<p>Aquí están los vehículos que transmiten ahora, con su envío y su avance. Toque uno para centrar el mapa en él; ' +
+               '<b>Ver todos</b> los muestra a todos.</p>' },
+      { sel: '#tarjeta-viaje', clic: true, titulo: 'Tarjetas de los viajes', preparar: guiaAVivo,
+        texto: '<p>Arriba a la derecha hay una tarjeta por cada camión que hace un envío: estado, retraso, alertas y avance.</p>',
+        hacer: '👉 Toque una tarjeta para ver su detalle.',
+        sinObjetivo: '<p>Cuando haya camiones haciendo un envío, arriba a la derecha saldrá una tarjeta por cada uno, con su estado, retraso, alertas y avance. ' +
+                     'Al tocarla se despliega el detalle.</p>' },
+      { sel: '#ventana-datos', titulo: 'El camión elegido', preparar: guiaAVivo,
+        texto: '<p>Aquí sale la posición, la fecha y la hora del último dato del camión elegido.</p>' +
+               '<p>Si toca el camión en el mapa, se abre la <b>planilla del conductor</b>, con su nombre y su foto.</p>' },
+      { sel: '.boton-centrar', titulo: 'Centrar el mapa', preparar: guiaAVivo,
+        texto: '<p>Este botón centra el mapa en el camión elegido y lo va siguiendo. Si no hay uno elegido, muestra a todos.</p>' },
+      { sel: '#modo-historicos', clic: true, titulo: 'Históricos', preparar: function () { guiaAVivo(); alternarMenu(true); },
+        texto: '<p>Ahora veamos los recorridos ya hechos.</p>',
+        hacer: '👉 Toque «Históricos».' },
+      { sel: '#vista-lista .tipo-filtro', titulo: 'Buscar recorridos', preparar: function () { guiaEnModo('historicos'); },
+        texto: '<ul><li><b>Filtro por fecha</b>: elija un atajo (hoy, ayer, 7 días) o unas fechas.</li>' +
+               '<li><b>Filtro por zona</b>: toque el mapa para ver qué recorridos pasaron por ahí.</li>' +
+               '<li>Debajo salen las rutas: toque una para dibujarla con su conductor y su envío.</li></ul>' },
+      { sel: '#modo-envios', clic: true, titulo: 'Envíos', preparar: function () { guiaEnModo('historicos'); },
+        texto: '<p>Por último, los viajes de carga.</p>',
+        hacer: '👉 Toque «Envíos».' }
     ];
+    if (opera) {
+      pasos.push({ sel: '.boton-nuevo-envio', titulo: 'Crear un envío', preparar: function () { guiaEnModo('envios'); },
+        texto: '<p>Con <b>Nuevo envío</b> registra el cliente, el origen, el destino y la carga. Orbita propone el <b>camión más adecuado</b> ' +
+               'y calcula la ruta con sus puntos de control.</p>' });
+    }
+    pasos.push(
+      { sel: '#lista-envios', titulo: 'Seguir un envío', preparar: function () { guiaEnModo('envios'); },
+        texto: '<p>Toque un envío para ver su detalle: ruta, puntos de control, retraso, alertas, eventos de la carga y la ' +
+               '<b>verificación del conductor</b>' + (opera ? ', que también puede pedir con «Verificar conductor ahora»' : '') + '.</p>' +
+               (opera ? '' : '<p>Su usuario es de <b>consulta</b>: puede mirar todo, pero no crear ni cancelar envíos.</p>') },
+      { sel: '#boton-menu', titulo: 'Alertas', preparar: guiaAVivo,
+        texto: '<p>Si un camión va con <b>retraso</b>, se <b>desvía</b> de la ruta o maneja <b>otro conductor</b>, sale un aviso sobre el mapa ' +
+               'y un número rojo sobre el menú y sobre «Envíos».</p>' },
+      { sel: '#boton-usuario', titulo: 'Su cuenta', preparar: guiaAVivo,
+        texto: '<p>Con este botón puede <b>volver a ver esta guía</b>, cambiar su contraseña o salir de la página.</p>' },
+      { titulo: '¡Listo!', preparar: guiaAVivo,
+        texto: '<p>Ya conoce las funciones principales de Orbita. Puede empezar a usar la página.</p>' }
+    );
+    return pasos;
   }
-  function claveGuia() { return 'orbita-guia-vista:' + (sesionActual ? sesionActual.usuario : ''); }
+
   function abrirGuia() {
-    pasoGuiaActual = 0;
-    pintarGuia();
-    document.getElementById('ventana-guia').hidden = false;
-    document.getElementById('guia-siguiente').focus();
-  }
-  function pintarGuia() {
-    var pasos = pasosGuia(), p = pasos[pasoGuiaActual], ultimo = pasoGuiaActual === pasos.length - 1;
-    document.getElementById('guia-icono').textContent = p.icono;
-    document.getElementById('guia-titulo').textContent = p.titulo;
-    document.getElementById('guia-texto').innerHTML = p.texto;
-    document.getElementById('guia-puntos').innerHTML = pasos.map(function (x, i) { return '<i' + (i === pasoGuiaActual ? ' class="activo"' : '') + '></i>'; }).join('');
-    document.getElementById('guia-atras').hidden = pasoGuiaActual === 0;
-    document.getElementById('guia-siguiente').textContent = ultimo ? 'Empezar' : 'Siguiente →';
-  }
-  function pasoGuia(delta) {
-    var total = pasosGuia().length;
-    if (delta > 0 && pasoGuiaActual === total - 1) { cerrarGuia(); return; }
-    pasoGuiaActual = Math.max(0, Math.min(total - 1, pasoGuiaActual + delta));
-    pintarGuia();
+    guia.abierta = true;
+    document.getElementById('guia').hidden = false;
+    clearInterval(guia.reloj);
+    guia.reloj = setInterval(function () { if (guia.abierta) { ubicarGuia(); } }, 400);   // por si la página se mueve
+    irAPasoGuia(0);
   }
   function cerrarGuia() {
-    document.getElementById('ventana-guia').hidden = true;
-    try { localStorage.setItem(claveGuia(), '1'); } catch (e) { /* sin almacenamiento: no pasa nada */ }
+    if (!guia.abierta) { return; }
+    guia.abierta = false;
+    guia.token++;
+    clearInterval(guia.reloj);
+    document.getElementById('guia').hidden = true;
+    guiaAVivo();
   }
-  function mostrarGuiaSiEsNueva() {
-    var vista = false;
-    try { vista = localStorage.getItem(claveGuia()) === '1'; } catch (e) { vista = false; }
-    if (!vista && document.getElementById('ventana-guia').hidden) { abrirGuia(); }
+  function pasoGuia(delta) {
+    if (!guia.abierta) { return; }
+    var total = pasosGuia().length;
+    if (delta > 0 && guia.paso === total - 1) { cerrarGuia(); return; }
+    irAPasoGuia(Math.max(0, Math.min(total - 1, guia.paso + delta)));
   }
+  function irAPasoGuia(i) {
+    var pasos = pasosGuia(), p = pasos[i], token = ++guia.token;
+    guia.paso = i;
+    guia.objetivo = null;
+    if (p.preparar) { p.preparar(); }
+    // Se espera a que el menú termine de abrirse o cerrarse antes de medir.
+    setTimeout(function () { if (token === guia.token && guia.abierta) { pintarGuia(); } }, 380);
+  }
+  function guiaVisible(el) {
+    if (!el || el.hidden) { return false; }
+    var r = el.getBoundingClientRect();      // (offsetParent no sirve: es null en los elementos fijos)
+    return r.width > 0 && r.height > 0 && getComputedStyle(el).visibility !== 'hidden';
+  }
+  function pintarGuia() {
+    var pasos = pasosGuia(), p = pasos[guia.paso], ultimo = guia.paso === pasos.length - 1;
+    var el = p.sel ? document.querySelector(p.sel) : null;
+    if (!guiaVisible(el)) { el = null; }
+    if (el && el.scrollIntoView) { el.scrollIntoView({ block: 'nearest' }); }
+    guia.objetivo = el;
+    document.getElementById('guia-contador').textContent = 'Paso ' + (guia.paso + 1) + ' de ' + pasos.length;
+    document.getElementById('guia-titulo').textContent = p.titulo;
+    document.getElementById('guia-texto').innerHTML = (!el && p.sinObjetivo) ? p.sinObjetivo : p.texto;
+    var hacer = document.getElementById('guia-hacer');
+    hacer.hidden = !(el && p.clic && p.hacer);
+    hacer.textContent = p.hacer || '';
+    document.getElementById('guia-atras').hidden = guia.paso === 0;
+    document.getElementById('guia-siguiente').textContent = ultimo ? 'Terminar' : (guia.paso === 0 ? 'Empezar →' : 'Siguiente →');
+    ubicarGuia();
+    document.getElementById('guia-siguiente').focus({ preventScroll: true });
+  }
+  // Coloca el foco (el hueco iluminado), los bloqueos que impiden tocar el resto y la burbuja.
+  function ubicarGuia() {
+    var p = pasosGuia()[guia.paso], el = guia.objetivo;
+    if (el && !guiaVisible(el)) { el = null; }
+    var foco = document.getElementById('guia-foco'), burbuja = document.getElementById('guia-burbuja');
+    var bloqueos = document.querySelectorAll('#guia .guia-bloqueo');
+    var W = window.innerWidth, H = window.innerHeight, M = 6;
+    var r = el ? el.getBoundingClientRect() : null;
+    var hueco = r ? { x: r.left - M, y: r.top - M, w: r.width + 2 * M, h: r.height + 2 * M }
+                  : { x: W / 2, y: H / 2, w: 0, h: 0 };
+    foco.className = 'guia-foco' + (r ? '' : ' sin-objetivo') + (r && p.clic ? ' pide-clic' : '');
+    foco.style.left = hueco.x + 'px'; foco.style.top = hueco.y + 'px';
+    foco.style.width = hueco.w + 'px'; foco.style.height = hueco.h + 'px';
+    function poner(b, x, y, w, h) { b.style.left = x + 'px'; b.style.top = y + 'px'; b.style.width = Math.max(0, w) + 'px'; b.style.height = Math.max(0, h) + 'px'; }
+    if (r && p.clic) {      // se puede tocar solo lo iluminado
+      poner(bloqueos[0], 0, 0, W, hueco.y);
+      poner(bloqueos[1], 0, hueco.y + hueco.h, W, H - hueco.y - hueco.h);
+      poner(bloqueos[2], 0, hueco.y, hueco.x, hueco.h);
+      poner(bloqueos[3], hueco.x + hueco.w, hueco.y, W - hueco.x - hueco.w, hueco.h);
+      poner(bloqueos[4], 0, 0, 0, 0);
+    } else {                // no se puede tocar nada de la página
+      for (var i = 0; i < 4; i++) { poner(bloqueos[i], 0, 0, 0, 0); }
+      poner(bloqueos[4], 0, 0, W, H);
+    }
+    // La burbuja: en el celular, arriba o abajo (lejos de lo iluminado); en el PC, al lado que quepa.
+    var bw = burbuja.offsetWidth, bh = burbuja.offsetHeight, x, y, G = 14, B = 12;
+    if (!r) { x = (W - bw) / 2; y = (H - bh) / 2; }
+    else if (W <= 720) {
+      x = B;
+      y = (r.top + r.height / 2 > H / 2) ? Math.max(B, hueco.y - bh - G) : Math.min(H - bh - B, hueco.y + hueco.h + G);
+      if (y < B || y + bh > H - B) { y = (r.top + r.height / 2 > H / 2) ? B : H - bh - B; }
+    } else {
+      var opciones = [
+        [hueco.x + hueco.w + G, hueco.y],                 // a la derecha
+        [hueco.x - bw - G, hueco.y],                      // a la izquierda
+        [hueco.x, hueco.y + hueco.h + G],                 // debajo
+        [hueco.x, hueco.y - bh - G]                       // encima
+      ];
+      var elegida = opciones.filter(function (o, k) {
+        return k < 2 ? (o[0] >= B && o[0] + bw <= W - B) : (o[1] >= B && o[1] + bh <= H - B);
+      })[0] || [(W - bw) / 2, H - bh - B];
+      x = elegida[0]; y = elegida[1];
+    }
+    burbuja.style.left = Math.round(Math.max(B, Math.min(W - bw - B, x))) + 'px';
+    burbuja.style.top = Math.round(Math.max(B, Math.min(H - bh - B, y))) + 'px';
+  }
+  // Tocar lo iluminado (cuando el paso lo pide) hace lo normal de la página y avanza la guía.
+  document.addEventListener('click', function (ev) {
+    if (!guia.abierta) { return; }
+    var p = pasosGuia()[guia.paso];
+    if (ev.target.classList && ev.target.classList.contains('guia-bloqueo')) {
+      ev.stopPropagation(); ev.preventDefault();
+      var b = document.getElementById('guia-burbuja');
+      b.classList.remove('sacudir'); void b.offsetWidth; b.classList.add('sacudir');
+      return;
+    }
+    if (p.clic && guia.objetivo && guia.objetivo.contains(ev.target)) {
+      var token = guia.token;
+      setTimeout(function () { if (token === guia.token) { pasoGuia(1); } }, 450);
+    }
+  }, true);
   document.addEventListener('keydown', function (ev) {
-    if (document.getElementById('ventana-guia').hidden) { return; }
+    if (!guia.abierta) { return; }
     if (ev.key === 'Escape') { cerrarGuia(); }
     else if (ev.key === 'ArrowRight') { pasoGuia(1); }
     else if (ev.key === 'ArrowLeft') { pasoGuia(-1); }
   });
+  window.addEventListener('resize', function () { if (guia.abierta) { ubicarGuia(); } });
+  // Después de ingresar la página se recarga: esta marca (solo de esta pestaña) dice que hay que mostrar la guía.
+  function guiaTrasIngresar() {
+    var pendiente = false;
+    try { pendiente = sessionStorage.getItem('orbita-guia-al-entrar') === '1'; sessionStorage.removeItem('orbita-guia-al-entrar'); } catch (e) { pendiente = false; }
+    if (pendiente) { setTimeout(abrirGuia, 1200); }
+  }
 
   function abrirCambioClave() {
     alternarCuenta(false);
