@@ -543,6 +543,9 @@
   .gris { color: var(--medio); font-weight: 600; }
   .nota-envio { margin-top: 8px; padding: 8px 10px; border-radius: 9px; background: rgba(31, 59, 92, 0.09); font-size: 12.5px; line-height: 1.45; }
   .btn-ancho { display: block; width: 100%; margin-top: 12px; }
+  /* Dentro de las cajas claras, el botón secundario va con texto oscuro (si no, queda blanco sobre claro). */
+  .caja-clara .btn-secundario { color: var(--oscuro); border-color: var(--medio); background: rgba(255, 255, 255, 0.55); }
+  .caja-clara .btn-secundario:hover { background: #fff; }
   .enlace-detalle { display: block; margin-top: 8px; padding: 0; border: 0; background: none; color: #1565D8; font-size: 12.5px; font-weight: 800; cursor: pointer; }
 
   /* Puntos de control y alertas */
@@ -800,6 +803,28 @@
   .ventana h2 { margin: 0 0 4px; font-size: 16px; font-weight: 800; }
   .ventana .ayuda-chica { margin: 0 0 6px; font-size: 12px; line-height: 1.4; color: var(--gris-azul); font-weight: 600; }
   .ventana .fila-botones { display: flex; gap: 8px; margin-top: 16px; }
+  /* Guía de bienvenida */
+  .ventana.guia { position: relative; max-width: 420px; padding: 22px 22px 18px; text-align: center; }
+  .guia-saltar {
+    position: absolute; top: 10px; right: 12px; padding: 6px 8px; border: 0; background: none;
+    color: var(--gris-azul); font-size: 12px; font-weight: 700; cursor: pointer;
+  }
+  .guia-saltar:hover { color: var(--claro); text-decoration: underline; }
+  .guia-icono {
+    width: 64px; height: 64px; margin: 6px auto 12px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center; font-size: 32px; background: rgba(11, 31, 58, 0.5);
+  }
+  .ventana.guia h2 { font-size: 18px; margin-bottom: 8px; }
+  .guia-texto { font-size: 13.5px; line-height: 1.5; font-weight: 600; text-align: left; min-height: 120px; }
+  .guia-texto p { margin: 0 0 8px; }
+  .guia-texto ul { margin: 0; padding-left: 20px; }
+  .guia-texto li { margin-bottom: 5px; }
+  .guia-texto b { color: #fff; }
+  .guia-puntos { display: flex; justify-content: center; gap: 6px; margin-top: 14px; }
+  .guia-puntos i { width: 8px; height: 8px; border-radius: 50%; background: rgba(167, 177, 190, 0.45); transition: width 0.2s ease; }
+  .guia-puntos i.activo { width: 22px; border-radius: 999px; background: var(--claro); }
+  .ventana.guia .fila-botones .btn { flex: 1; }
+  #guia-atras[hidden] { display: none; }
   .ventana h3 { margin: 18px 0 2px; font-size: 11px; font-weight: 800; letter-spacing: 0.1em; text-transform: uppercase; color: var(--gris-azul); }
   .usuario-fila { margin-top: 8px; padding: 10px 12px; border-radius: 12px; background: rgba(11, 31, 58, 0.42); }
   .usuario-fila.inactivo { opacity: 0.55; }
@@ -1166,10 +1191,26 @@
   </div>
   <div class="acciones-usuario">
     <button class="btn btn-secundario solo-admin" onclick="abrirUsuarios()">👥 Usuarios</button>
+    <button class="btn btn-secundario" onclick="alternarCuenta(false); abrirGuia()">❓ Ver la guía de la página</button>
     <button class="btn btn-secundario" onclick="abrirCambioClave()">🔑 Cambiar contraseña</button>
     <button class="btn btn-secundario" onclick="salir()">↩ Salir</button>
   </div>
   <p class="sesion-vence" id="sesion-vence"></p>
+</div>
+
+<!-- Guía de bienvenida: se muestra la primera vez que cada usuario entra (y desde "Mi cuenta") -->
+<div class="fondo-ventana" id="ventana-guia" hidden onclick="if (event.target === this) cerrarGuia()">
+  <div class="ventana guia" role="dialog" aria-modal="true" aria-labelledby="guia-titulo">
+    <button type="button" class="guia-saltar" onclick="cerrarGuia()">Saltar guía</button>
+    <div class="guia-icono" id="guia-icono" aria-hidden="true"></div>
+    <h2 id="guia-titulo"></h2>
+    <div class="guia-texto" id="guia-texto"></div>
+    <div class="guia-puntos" id="guia-puntos" aria-hidden="true"></div>
+    <div class="fila-botones">
+      <button type="button" class="btn btn-secundario" id="guia-atras" onclick="pasoGuia(-1)">← Atrás</button>
+      <button type="button" class="btn btn-principal" id="guia-siguiente" onclick="pasoGuia(1)">Siguiente →</button>
+    </div>
+  </div>
 </div>
 
 <!-- P3-S4: cambiar la contraseña propia -->
@@ -1266,6 +1307,7 @@
     document.getElementById('boton-usuario').title = u.nombre + ' (' + u.rol_nombre + ')';
     document.getElementById('sesion-vence').textContent = vence ? 'La sesión se cierra sola a las ' +
       new Date(vence).toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' }) : '';
+    mostrarGuiaSiEsNueva();
   }
 
   // Tarjeta de la cuenta: se abre con el botón de la persona y se cierra al tocar fuera.
@@ -1326,6 +1368,88 @@
   }
 
   function cerrarVentana(id) { document.getElementById(id).hidden = true; }
+
+  // ---- Guía de bienvenida ----
+  // Sale sola la primera vez que cada usuario entra desde este navegador; luego
+  // se puede volver a ver desde "Mi cuenta". Se recuerda en el navegador (localStorage).
+  var pasoGuiaActual = 0;
+  function pasosGuia() {
+    var opera = sesionActual && sesionActual.rol !== 'consulta';
+    return [
+      { icono: '🛰️', titulo: 'Bienvenido a Orbita',
+        texto: '<p>Orbita sigue en tiempo real a los camiones de carga. El celular de cada conductor envía su posición cada 5 segundos.</p>' +
+               '<p>En esta guía corta verá las funciones principales de la página. Puede saltarla cuando quiera.</p>' },
+      { icono: '☰', titulo: 'El menú',
+        texto: '<p>Con el botón <b>☰</b> (arriba a la izquierda) abre el menú. Ahí cambia entre los tres modos:</p>' +
+               '<ul><li><b>📍 En vivo</b>: dónde están los camiones ahora.</li>' +
+               '<li><b>🕐 Históricos</b>: recorridos pasados.</li>' +
+               '<li><b>📦 Envíos</b>: los viajes de carga.</li></ul>' +
+               '<p>Un número rojo sobre el menú indica alertas sin atender.</p>' },
+      { icono: '📍', titulo: 'En vivo',
+        texto: '<ul><li>Cada camión es un ícono de color sobre el mapa, con su recorrido.</li>' +
+               '<li>Arriba a la derecha hay una <b>tarjeta por cada camión con envío</b>: avance, retraso y alertas.</li>' +
+               '<li>Toque una tarjeta o un camión para ver su detalle y la <b>planilla del conductor</b>.</li>' +
+               '<li>El botón de la mira (abajo a la derecha) centra el mapa.</li></ul>' },
+      { icono: '🕐', titulo: 'Históricos',
+        texto: '<ul><li>Elija un rango de fechas para ver los recorridos que se hicieron.</li>' +
+               '<li>Toque un recorrido para dibujarlo en el mapa, con su conductor y su envío.</li>' +
+               '<li>Si el recorrido tenía envío, también verá la ruta planeada y los puntos de control.</li></ul>' },
+      { icono: '📦', titulo: 'Envíos',
+        texto: opera
+          ? '<ul><li>Con <b>Nuevo envío</b> registra el cliente, el origen, el destino y la carga.</li>' +
+            '<li>Orbita propone el <b>camión más adecuado</b> y calcula la ruta con sus puntos de control.</li>' +
+            '<li>En el detalle sigue el avance, los tiempos, los kilómetros y los eventos de la carga.</li></ul>'
+          : '<ul><li>Aquí está la lista de envíos con su estado.</li>' +
+            '<li>En el detalle de cada uno se ven la ruta, los puntos de control, los tiempos, los kilómetros y los eventos de la carga.</li>' +
+            '<li>Su usuario es de <b>consulta</b>: puede mirar todo, pero no crear ni cancelar envíos.</li></ul>' },
+      { icono: '⚠️', titulo: 'Alertas y seguridad',
+        texto: '<ul><li>Orbita avisa si un camión va con <b>retraso</b> o se <b>desvía</b> de la ruta.</li>' +
+               '<li>Durante el viaje, la cámara de la cabina <b>verifica al conductor</b> cada cierto tiempo.' +
+               (opera ? ' También puede pedir una verificación con <b>Verificar conductor ahora</b>.' : '') + '</li>' +
+               '<li>Los sensores de la carga registran frenadas bruscas, huecos y aperturas de la puerta.</li></ul>' },
+      { icono: '👤', titulo: 'Su cuenta',
+        texto: '<p>Con el botón <b>👤</b>, junto al menú, puede:</p>' +
+               '<ul><li>volver a ver esta guía,</li><li>cambiar su contraseña,</li><li>salir de la página.</li></ul>' +
+               '<p>¡Listo! Ya puede empezar a usar Orbita.</p>' }
+    ];
+  }
+  function claveGuia() { return 'orbita-guia-vista:' + (sesionActual ? sesionActual.usuario : ''); }
+  function abrirGuia() {
+    pasoGuiaActual = 0;
+    pintarGuia();
+    document.getElementById('ventana-guia').hidden = false;
+    document.getElementById('guia-siguiente').focus();
+  }
+  function pintarGuia() {
+    var pasos = pasosGuia(), p = pasos[pasoGuiaActual], ultimo = pasoGuiaActual === pasos.length - 1;
+    document.getElementById('guia-icono').textContent = p.icono;
+    document.getElementById('guia-titulo').textContent = p.titulo;
+    document.getElementById('guia-texto').innerHTML = p.texto;
+    document.getElementById('guia-puntos').innerHTML = pasos.map(function (x, i) { return '<i' + (i === pasoGuiaActual ? ' class="activo"' : '') + '></i>'; }).join('');
+    document.getElementById('guia-atras').hidden = pasoGuiaActual === 0;
+    document.getElementById('guia-siguiente').textContent = ultimo ? 'Empezar' : 'Siguiente →';
+  }
+  function pasoGuia(delta) {
+    var total = pasosGuia().length;
+    if (delta > 0 && pasoGuiaActual === total - 1) { cerrarGuia(); return; }
+    pasoGuiaActual = Math.max(0, Math.min(total - 1, pasoGuiaActual + delta));
+    pintarGuia();
+  }
+  function cerrarGuia() {
+    document.getElementById('ventana-guia').hidden = true;
+    try { localStorage.setItem(claveGuia(), '1'); } catch (e) { /* sin almacenamiento: no pasa nada */ }
+  }
+  function mostrarGuiaSiEsNueva() {
+    var vista = false;
+    try { vista = localStorage.getItem(claveGuia()) === '1'; } catch (e) { vista = false; }
+    if (!vista && document.getElementById('ventana-guia').hidden) { abrirGuia(); }
+  }
+  document.addEventListener('keydown', function (ev) {
+    if (document.getElementById('ventana-guia').hidden) { return; }
+    if (ev.key === 'Escape') { cerrarGuia(); }
+    else if (ev.key === 'ArrowRight') { pasoGuia(1); }
+    else if (ev.key === 'ArrowLeft') { pasoGuia(-1); }
+  });
 
   function abrirCambioClave() {
     alternarCuenta(false);
@@ -2100,11 +2224,7 @@
         });
         Object.keys(vehiculos).forEach(function (id) { if (!vistos[id]) { quitarVehiculo(id); } });
 
-        // Si no hay nadie seleccionado, se toma el que mandó el último paquete.
-        if (seleccionado === null) {
-          var ids = Object.keys(vehiculos).sort(function (a, b) { return vehiculos[a].datos.segundos - vehiculos[b].datos.segundos; });
-          if (ids.length) { seleccionado = ids[0]; marcador = vehiculos[ids[0]].marcador; }
-        }
+        // Ningún vehículo se elige solo: el usuario escoge uno en el mapa, en la lista o en su tarjeta.
         Object.keys(vehiculos).forEach(function (k) { pintarIcono(vehiculos[k]); });
         mostrarSeleccionado();
         if (seleccionado !== null) { ['lat', 'lon', 'fecha', 'hora'].forEach(destellar); }
