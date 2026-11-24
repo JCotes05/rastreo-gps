@@ -643,7 +643,7 @@
     width: 24px; height: 24px; border-radius: 50%; background: #C62828; color: #fff; border: 2px solid #fff;
     display: flex; align-items: center; justify-content: center; font-size: 12px; box-shadow: 0 2px 6px rgba(0, 0, 0, 0.35);
   }
-  /* P3-S3: eventos de la carga (frenada, hueco, curva, luz) */
+  /* P3-S3: eventos de la carga (frenada, hueco, luz) */
   .marca-evento { background: none; border: 0; }
   .marca-evento div {
     width: 22px; height: 22px; border-radius: 50%; border: 2px solid #fff; box-sizing: border-box;
@@ -3826,10 +3826,10 @@
   // P3S3-INICIO ----------------------------------------------------------
   // Eventos de la carga (ESP32 de sensores, P3-S3). Si el servidor no los
   // manda (servidor viejo o sin p3s3.sql), estas funciones no dibujan nada.
+  // Las curvas (tipo 'curva') no se muestran: la detección de curvas está apagada en el ESP32.
   var EVENTO_CARGA = {
     frenada:     { letra: 'F', color: '#E4572E', nombre: 'Frenada brusca', plural: 'frenadas' },
     hueco:       { letra: 'H', color: '#8D6E63', nombre: 'Hueco', plural: 'huecos' },
-    curva:       { letra: 'C', color: '#7E57C2', nombre: 'Curva brusca', plural: 'curvas' },
     luz_abierta: { letra: '☀', color: '#D49100', nombre: 'Carga abierta', plural: 'aperturas' },
     luz_cerrada: { letra: '●', color: '#5C6B80', nombre: 'Carga cerrada', plural: 'cierres' }
   };
@@ -3886,7 +3886,7 @@
   }
   function htmlConteoEventos(s) {
     var n = s.conteo || {};
-    return '<div class="conteo-eventos">' + ['frenada', 'hueco', 'curva', 'luz_abierta'].map(function (tipo) {
+    return '<div class="conteo-eventos">' + ['frenada', 'hueco', 'luz_abierta'].map(function (tipo) {
       return '<span>' + letraEvento(tipo) + (n[tipo] || 0) + ' ' + EVENTO_CARGA[tipo].plural + '</span>';
     }).join('') + '</div>';
   }
@@ -3895,7 +3895,8 @@
     var s = sensoresDe(e);
     if (!s) { return ''; }
     var enVivo = e.estado === 'en_ruta' || e.estado === 'en_destino';
-    var recientes = s.eventos.slice(-(maximo || 8)).reverse();
+    var visibles = s.eventos.filter(function (ev) { return EVENTO_CARGA[ev.tipo]; });   // sin curvas
+    var recientes = visibles.slice(-(maximo || 8)).reverse();
     var lista = recientes.map(function (ev) {
       if (!EVENTO_CARGA[ev.tipo]) { return ''; }
       var valor = textoValorEvento(ev), km = kmEvento(ev);
@@ -3904,7 +3905,7 @@
         letraEvento(ev.tipo) + '<span>' + EVENTO_CARGA[ev.tipo].nombre + (valor ? ' <small>' + valor + '</small>' : '') + '</span>' +
         '<small>' + (ev.momento ? horaDe(ev.momento) : '') + (km ? ' · ' + km : '') + '</small></div>';
     }).join('');
-    var total = s.eventos.length;
+    var total = visibles.length;
     return '<div class="sub-titulo">Sensores de la carga</div>' +
       '<div class="caja-clara">' + htmlEstadoCarga(s, enVivo) + htmlConteoEventos(s) +
       (lista ? '<div class="lista-eventos">' + lista + '</div>' +
@@ -3922,7 +3923,6 @@
       (c.estado === 'abierta' ? '<span class="chip chip-carga-abierta">Carga abierta</span> '
        : c.estado === 'cerrada' ? '<span class="chip chip-carga-cerrada">Carga cerrada</span> ' : '') +
       letraEvento('frenada') + ' ' + (n.frenada || 0) + ' &nbsp;' + letraEvento('hueco') + ' ' + (n.hueco || 0) +
-      ' &nbsp;' + letraEvento('curva') + ' ' + (n.curva || 0) +
       (c.ultimo_contacto ? ' <small class="gris">· sensores ' + (c.en_linea ? 'en línea' : horaDe(c.ultimo_contacto)) + '</small>' : '') +
       '</div>';
   }
