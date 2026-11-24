@@ -724,7 +724,7 @@
   @media (max-width: 720px) {
     .pila-viajes {
       top: calc(100px + env(safe-area-inset-top, 0px)); left: 10px; right: 10px; width: auto; max-width: none;
-      max-height: 55vh; gap: 6px;
+      max-height: 38vh; gap: 6px;
     }
     .tarjeta-viaje { padding: 8px 12px 9px; border-radius: 12px; border-left-width: 6px; }
     .tarjeta-viaje.plegada { padding-bottom: 8px; }
@@ -1440,8 +1440,12 @@
         sinObjetivo: '<p>Cuando haya camiones haciendo un envío, arriba a la derecha saldrá una tarjeta por cada uno, con su estado, retraso, alertas y avance. ' +
                      'Al tocarla se despliega el detalle.</p>' },
       { sel: '#ventana-datos', titulo: 'El camión elegido', preparar: guiaAVivo,
-        texto: '<p>Aquí sale la posición, la fecha y la hora del último dato del camión elegido.</p>' +
-               '<p>Si toca el camión en el mapa, se abre la <b>planilla del conductor</b>, con su nombre y su foto.</p>' },
+        // Ningún camión se elige solo: sin uno elegido, la ventana muestra «—» y el texto lo explica.
+        texto: seleccionado === null
+          ? '<p>Aquí salen la posición, la fecha y la hora del camión que elija. ' +
+            'Toque un camión en el mapa, en la lista o en su tarjeta para verlo.</p>'
+          : '<p>Aquí sale la posición, la fecha y la hora del último dato del camión elegido.</p>' +
+            '<p>Si toca el camión en el mapa, se abre la <b>planilla del conductor</b>, con su nombre y su foto.</p>' },
       { sel: '.boton-centrar', titulo: 'Centrar el mapa', preparar: guiaAVivo,
         texto: '<p>Este botón centra el mapa en el camión elegido y lo va siguiendo. Si no hay uno elegido, muestra a todos.</p>' },
       { sel: '#modo-historicos', clic: true, titulo: 'Históricos', preparar: function () { guiaAVivo(); alternarMenu(true); },
@@ -1588,12 +1592,17 @@
       setTimeout(function () { if (token === guia.token) { pasoGuia(1); } }, 450);
     }
   }, true);
+  // En captura: con la guía abierta, estas teclas solo la manejan a ella (no desplazan el mapa
+  // de Leaflet ni cierran el menú o la planilla, que escuchan después).
   document.addEventListener('keydown', function (ev) {
     if (!guia.abierta) { return; }
+    if (ev.key !== 'Escape' && ev.key !== 'ArrowRight' && ev.key !== 'ArrowLeft') { return; }
+    ev.preventDefault();
+    ev.stopPropagation();
     if (ev.key === 'Escape') { cerrarGuia(); }
     else if (ev.key === 'ArrowRight') { pasoGuia(1); }
-    else if (ev.key === 'ArrowLeft') { pasoGuia(-1); }
-  });
+    else { pasoGuia(-1); }
+  }, true);
   window.addEventListener('resize', function () { if (guia.abierta) { ubicarGuia(); } });
   // Después de ingresar la página se recarga: esta marca (solo de esta pestaña) dice que hay que mostrar la guía.
   function guiaTrasIngresar() {
@@ -2173,7 +2182,7 @@
     siguiendo = !!seguir;
     Object.keys(vehiculos).forEach(function (k) { pintarIcono(vehiculos[k]); });
     mostrarSeleccionado();
-    if (seguir) { mapa.setView(marcador.getLatLng(), Math.max(mapa.getZoom(), 15)); }
+    if (seguir) { centrarEnLibre(marcador.getLatLng(), Math.max(mapa.getZoom(), 15)); }
     pintarListaVivo();
   }
 
@@ -2204,13 +2213,26 @@
     var arriba = 80, derecha = 60;
     ['ventana-datos', 'tarjeta-viaje'].forEach(function (id) {
       var el = porId(id);
-      if (el && !el.hidden && el.offsetParent !== null) {
+      if (guiaVisible(el)) {      // (offsetParent es null en los elementos fijos: no sirve aquí)
         var r = el.getBoundingClientRect();
         if (window.innerWidth <= 720) { arriba = Math.max(arriba, r.bottom + 40); }
         else if (id === 'tarjeta-viaje') { derecha = Math.max(derecha, window.innerWidth - r.left + 40); }
       }
     });
     return { paddingTopLeft: [50, arriba], paddingBottomRight: [derecha, 60], maxZoom: 15 };
+  }
+
+  // Centra el mapa en un punto, pero dentro de la zona que queda libre (sin la ventana de datos ni
+  // las tarjetas): en el celular el camión queda debajo de la pila; en el PC, a la izquierda de ella.
+  function centrarEnLibre(latlng, zoom) {
+    var m = margenesVivo(), t = mapa.getSize();
+    var izq = m.paddingTopLeft[0], arriba = m.paddingTopLeft[1], der = m.paddingBottomRight[0], abajo = m.paddingBottomRight[1];
+    if (t.x - izq - der < 80) { izq = der = 0; }                 // zona libre demasiado angosta: se centra normal
+    if (t.y - arriba - abajo < 80) { arriba = Math.min(arriba, t.y - 140); abajo = 60; }
+    var libre = L.point((izq + t.x - der) / 2, (arriba + t.y - abajo) / 2);
+    var corrimiento = libre.subtract(t.divideBy(2));            // cuánto se aleja el centro libre del centro del mapa
+    var centro = mapa.unproject(mapa.project(latlng, zoom).subtract(corrimiento), zoom);
+    mapa.setView(centro, zoom);
   }
 
   function textoHace(s) {
@@ -2385,7 +2407,7 @@
           yaEncuadrado = true;
           encuadrarTodos();
         } else if (siguiendo && marcador) {
-          mapa.setView(marcador.getLatLng(), mapa.getZoom());
+          centrarEnLibre(marcador.getLatLng(), mapa.getZoom());
         }
       })
       .catch(function (e) { console.error(e); });
@@ -2399,7 +2421,7 @@
     if (marcador) {
       siguiendo = true;
       var zoomActual = mapa.getZoom();
-      mapa.setView(marcador.getLatLng(), zoomActual < 13 ? 15 : zoomActual);
+      centrarEnLibre(marcador.getLatLng(), zoomActual < 13 ? 15 : zoomActual);
     } else {
       encuadrarTodos();
     }
@@ -4708,7 +4730,11 @@
     var boton = ev.target.closest('.viaje-cabecera');
     if (!boton) { return; }
     var id = boton.getAttribute('data-id');
-    if (id === String(seleccionado)) { tarjetaViajePlegada = !tarjetaViajePlegada; pintarTarjetaViaje(); }
+    if (id === String(seleccionado)) {
+      tarjetaViajePlegada = !tarjetaViajePlegada;
+      pintarTarjetaViaje();
+      if (siguiendo && marcador) { centrarEnLibre(marcador.getLatLng(), mapa.getZoom()); }   // la tarjeta cambió de alto
+    }
     else { tarjetaViajePlegada = false; seleccionar(id, true); }
   });
   // El envío dentro de la planilla flotante (al tocar el camión).
