@@ -1,4 +1,4 @@
-ORBITA - ESP32 de sensores de la carga (P3-S3) · firmware 1.0 · protocolo VER:1
+ORBITA - ESP32 de sensores de la carga (P3-S3) · firmware 1.1 · protocolo VER:1
 ==================================================================================
 
 QUE HACE
@@ -101,7 +101,7 @@ QUE HACE
      hasta que empiece a subir (aparecen porcentajes).
   6. Abra Herramientas > Monitor serie, a 115200 baudios y con "Nueva linea"
      (abajo a la derecha). Presione EN (reset) en el ESP32: debe ver
-       # ORBITA - ESP32 de sensores de la carga · firmware 1.0 · protocolo VER:1
+       # ORBITA - ESP32 de sensores de la carga · firmware 1.1 · protocolo VER:1
        # GY-521 listo (MPU-6050, WHO_AM_I=0x68).
        # Calibrando la gravedad: deje el sensor QUIETO 2 s...
        # Bluetooth listo como 'ORBITA-SENSORES'...
@@ -138,6 +138,8 @@ QUE HACE
   PRUEBA FRENADA            manda un evento de prueba (tambien HUECO o CURVA);
                             necesita un viaje iniciado
   FABRICA                   vuelve a los umbrales iniciales
+  CRUDO                     graba los datos para el machine learning (ver la seccion 11).
+                            CRUDO otra vez (o CRUDO NO) para parar. CRUDO SI la enciende.
 
   Modo prueba SIN celular: escriba en el monitor los mismos mensajes del celular:
     PING              -> responde PONG
@@ -259,3 +261,44 @@ QUE HACE
 10. SIN HARDWARE
   reconocimiento/simulador_esp_sensores.py hace lo mismo desde el PC por un puerto
   COM Bluetooth (teclas f, h, c, a, z).
+
+
+11. MODO CRUDO: GRABAR DATOS PARA MACHINE LEARNING (firmware 1.1)
+  Sirve para grabar recorridos y entrenar un modelo que reconozca frenadas, huecos,
+  reductores, etc. mejor que los umbrales. Los datos salen SOLO por el cable USB (no
+  por Bluetooth): el portatil va en el carro con un acompanante.
+
+  Desde la version 1.1 el firmware tambien lee el GIROSCOPIO del MPU-6050 (±500 °/s,
+  mismo filtro de 44 Hz). La deteccion por umbrales no cambia: sigue usando solo el
+  acelerometro, con los mismos umbrales guardados.
+
+  Escriba CRUDO en el monitor serie. Salen tres tipos de linea:
+    M,FW=1.1,HZ=200,ACEL_LSB_G=4096,GIRO_LSB_DPS=65.5,...,GRAV=...,ADELANTE=...
+        Datos de la grabacion: escalas, gravedad, ejes del camion, deriva del
+        giroscopio en reposo (GIRO_REPOSO) y todos los umbrales. Sale al empezar y
+        otra vez si se recalibra (RECAL) durante la grabacion.
+    D,<n>,<t>,ax,ay,az,gx,gy,gz
+        Una muestra, 200 por segundo. n = numero de muestra (1, 2, 3...), t = ms
+        desde que empezo la grabacion (deben ir de 5 en 5; un salto = se perdieron
+        muestras). Los 6 valores son ENTEROS crudos del sensor, en los ejes del
+        modulo: aceleracion en g = valor / 4096 ; giro en grados/s = valor / 65,5.
+    E,<n>,<TIPO>,<g>
+        Lo que el detector por umbral reportaria en la muestra n (FRENADA, HUECO o
+        CURVA), aunque no haya viaje. Sirve para comparar el umbral con el modelo.
+  Las lineas "# ..." siguen siendo avisos, y el protocolo con el celular (EVENTO,
+  LUZ, LATIDO) sigue funcionando igual mientras graba.
+
+  Con CRUDO activo no se puede usar CAL (se mezclarian las lineas). CRUDO no se
+  guarda: al reiniciar el ESP32 arranca apagado.
+
+  Ancho de banda: unas 200 lineas de ~35-50 caracteres por segundo (7-10 KB/s), por
+  debajo del limite de 115200 baudios (11,5 KB/s). No escriba otros comandos que
+  impriman mucho (VER, UMBRAL) mientras graba: podrian atrasar algunas muestras.
+
+  Prueba en la mesa (resultado esperado):
+    C1  Escriba CRUDO.  -> "# CRUDO activo..." , una linea M y luego lineas D sin parar.
+    C2  Quieto: ax ay az casi fijos (el eje vertical cerca de ±4096) y gx gy gz cerca
+        de GIRO_REPOSO x 65,5 (unos pocos cientos como mucho).
+    C3  Gire el modulo con la mano: gx, gy o gz pasan de mil o mas.
+    C4  De un golpe seco: aparece una linea E,<n>,HUECO,<g> entre las D.
+    C5  Escriba CRUDO.  -> "# CRUDO detenido: N muestras en S s." con N ≈ 200 x S.

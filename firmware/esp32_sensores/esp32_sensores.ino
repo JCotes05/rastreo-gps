@@ -1,6 +1,7 @@
 /*
  * esp32_sensores.ino — Orbita P3-S3 · ESP32 de sensores de la carga
- * Versión del firmware: 1.0  (protocolo VER:1, el mismo que ya entienden la app y el servidor)
+ * Versión del firmware: 1.1  (protocolo VER:1, el mismo que ya entienden la app y el servidor)
+ *   1.1: lee también el giroscopio y agrega el modo CRUDO (grabar datos para machine learning).
  *
  * ─────────────────────────────────────────────────────────────────────────────
  * QUÉ HACE
@@ -47,6 +48,17 @@
  *   2) Calibración: AYUDA, CAL, VER, UMBRAL, EJE, RECAL, OSCURO, CLARO,
  *      PRUEBA, FABRICA. Los umbrales se guardan en la memoria (Preferences)
  *      y sobreviven al apagado: no hay que volver a compilar.
+ *   3) Grabación para machine learning: CRUDO (o CRUDO SI / CRUDO NO). Solo por
+ *      el cable USB (nunca por Bluetooth: la app no lo entiende). Manda:
+ *        M,FW=1.1,HZ=200,...        datos de la grabación (escalas, gravedad, ejes,
+ *                                   umbrales). Sale al entrar y tras cada calibración.
+ *        D,<n>,<t>,ax,ay,az,gx,gy,gz   una línea por muestra (200 por segundo).
+ *                                   n = número de muestra, t = ms desde que empezó;
+ *                                   valores CRUDOS del sensor (enteros): acel/4096 = g,
+ *                                   giro/65.5 = °/s, en los ejes del módulo.
+ *        E,<n>,<TIPO>,<g>           lo que el detector por umbral reportaría (con o
+ *                                   sin viaje), para comparar con el modelo.
+ *      Lo demás (eventos al celular, luz, latido) sigue igual mientras graba.
  *
  * LIBRERÍAS: solo las que trae la placa (Wire, BluetoothSerial, Preferences).
  * Sin Wi-Fi y sin contraseñas.
@@ -70,7 +82,7 @@
 
 // ═════════════════════════════ CONFIGURACIÓN FIJA ═════════════════════════════
 const char* NOMBRE_BT  = "ORBITA-SENSORES";   // así aparece en el Bluetooth del celular
-const char* VERSION_FW = "1.0";
+const char* VERSION_FW = "1.1";
 
 // Pines
 const int PIN_SDA = 21;
@@ -99,6 +111,7 @@ const int      CALIB_INTENTOS = 5;     // después de 5 intentos se acepta igual
 // MPU-6050
 const uint8_t MPU_DIR       = 0x68;
 const float   MPU_LSB_POR_G = 4096.0;  // rango ±8 g (los golpes en la mesa pasan de 4 g)
+const float   MPU_LSB_POR_GRADO = 65.5; // giroscopio a ±500 °/s
 
 // ═══════════════ UMBRALES (por defecto; se cambian con UMBRAL y se guardan) ═══════════════
 // Valores iniciales pedidos en el proyecto. Después de calibrar, anote los suyos en LEEME.txt.
@@ -160,6 +173,15 @@ uint8_t mpuQuienSoy = 0;
 int fallosSeguidos = 0;
 uint32_t ultimoIntentoMpu = 0;
 float acel[3] = {0, 0, 1};          // última lectura cruda, en g, ejes del módulo
+float giro[3] = {0, 0, 0};          // última lectura del giroscopio, en °/s, ejes del módulo
+int16_t crudoA[3] = {0, 0, 0};      // las mismas lecturas sin convertir (las que van en CRUDO)
+int16_t crudoG[3] = {0, 0, 0};
+float giroReposo[3] = {0, 0, 0};    // giro medido quieto durante la calibración (deriva del sensor)
+
+// Modo CRUDO (grabación para machine learning)
+bool modoCrudo = false;
+uint32_t crudoN = 0;                // número de muestra desde que empezó la grabación
+uint32_t crudoDesde = 0;            // millis() al empezar
 
 // Gravedad calibrada y ejes del camión
 bool calibrando = false;
@@ -167,7 +189,7 @@ bool gravedadOk = false;
 int intentosCalib = 0;
 uint32_t calibDesde = 0;
 long calibN = 0;
-float calibSuma[3], calibMin[3], calibMax[3];
+float calibSuma[3], calibMin[3], calibMax[3], calibGiro[3];
 float gravedad[3] = {0, 0, 1};      // vector medido en reposo (apunta hacia ARRIBA)
 float gNorma = 1.0;                 // su tamaño (≈ 1 g)
 float arriba[3]   = {0, 0, 1};      // vector unitario vertical
@@ -205,6 +227,8 @@ String bufSerie = "", bufBt = "";
 uint32_t ultimoCaracterSerie = 0;
 
 uint32_t ultimaMuestra = 0, ultimaLuz = 0, ultimaCal = 0, ultimoLatido = 0;
+
+void enviarMetaCrudo();   // está más abajo (modo CRUDO)
 
 // ═════════════════════════════ UTILIDADES ═════════════════════════════
 // Aviso para personas (solo monitor serie). Empieza con "# " para no confundirse con el protocolo.
@@ -317,23 +341,32 @@ bool iniciarMpu() {
   if (!escribirMpu(0x6B, 0x01)) return false;          // despertar, reloj del giroscopio X (más estable)
   delay(10);
   bool ok = escribirMpu(0x1C, 0x10)                    // acelerómetro a ±8 g
-         && escribirMpu(0x1A, 0x03)                    // filtro digital interno ≈ 44 Hz
+         && escribirMpu(0x1B, 0x08)                    // giroscopio a ±500 °/s
+         && escribirMpu(0x1A, 0x03)                    // filtro digital interno ≈ 44 Hz (acelerómetro y giroscopio)
          && escribirMpu(0x19, 0x04);                   // muestreo interno 200 Hz
-  uint8_t verifica = 0;
+  uint8_t verifica = 0, verificaGiro = 0;
   if (!ok || !leerRegistroMpu(0x1C, verifica) || verifica != 0x10) return false;
+  if (!leerRegistroMpu(0x1B, verificaGiro) || verificaGiro != 0x08) return false;
   return true;
 }
 
-bool leerAcelerometro() {
+// Lee los 14 bytes seguidos desde 0x3B: acelerómetro (6), temperatura (2) y giroscopio (6).
+bool leerMovimiento() {
   Wire.beginTransmission(MPU_DIR);
   Wire.write(0x3B);                                    // ACCEL_XOUT_H
   if (Wire.endTransmission(false) != 0) return false;
-  if (Wire.requestFrom((uint8_t)MPU_DIR, (uint8_t)6) != 6) return false;
-  for (int i = 0; i < 3; i++) {
+  if (Wire.requestFrom((uint8_t)MPU_DIR, (uint8_t)14) != 14) return false;
+  int16_t v[7];
+  for (int i = 0; i < 7; i++) {
     int16_t alto = Wire.read();
     int16_t bajo = Wire.read();
-    int16_t crudo = (int16_t)((alto << 8) | (bajo & 0xFF));
-    acel[i] = crudo / MPU_LSB_POR_G;
+    v[i] = (int16_t)((alto << 8) | (bajo & 0xFF));
+  }
+  for (int i = 0; i < 3; i++) {
+    crudoA[i] = v[i];
+    crudoG[i] = v[4 + i];                              // v[3] es la temperatura: no se usa
+    acel[i] = v[i] / MPU_LSB_POR_G;
+    giro[i] = v[4 + i] / MPU_LSB_POR_GRADO;
   }
   return true;
 }
@@ -358,7 +391,7 @@ void empezarCalibracion() {
   calibrando = true;
   calibDesde = millis();
   calibN = 0;
-  for (int i = 0; i < 3; i++) { calibSuma[i] = 0; calibMin[i] = 99; calibMax[i] = -99; }
+  for (int i = 0; i < 3; i++) { calibSuma[i] = 0; calibMin[i] = 99; calibMax[i] = -99; calibGiro[i] = 0; }
   if (intentosCalib == 0) info("Calibrando la gravedad: deje el sensor QUIETO 2 s...");
 }
 
@@ -404,6 +437,7 @@ void calcularEjes() {
 void terminarCalibracion() {
   calibrando = false;
   for (int i = 0; i < 3; i++) gravedad[i] = calibSuma[i] / calibN;
+  for (int i = 0; i < 3; i++) giroReposo[i] = calibGiro[i] / calibN;
   gNorma = sqrtf(punto(gravedad, gravedad));
   if (gNorma < 0.5) gNorma = 1.0;                      // lectura absurda: se evita dividir por casi cero
   for (int i = 0; i < 3; i++) arriba[i] = gravedad[i] / gNorma;
@@ -416,14 +450,18 @@ void terminarCalibracion() {
   int8_t ejeVert = (vertical + 1) * (gravedad[vertical] >= 0 ? 1 : -1);
   info("Gravedad: x=%+.3f y=%+.3f z=%+.3f g (total %.3f g). Eje vertical: %s. Adelante: %s.",
        gravedad[0], gravedad[1], gravedad[2], gNorma, textoEje(ejeVert), textoEje(ejeUsado));
+  info("Giroscopio quieto: x=%+.2f y=%+.2f z=%+.2f grados/s (deriva del sensor; se resta al analizar).",
+       giroReposo[0], giroReposo[1], giroReposo[2]);
   if (gNorma < 0.85 || gNorma > 1.15)
     info("ATENCION: la gravedad medida deberia ser cerca de 1,00 g. Revise el modulo o repita con RECAL.");
   intentosCalib = 0;
+  if (modoCrudo) enviarMetaCrudo();                    // la grabación queda con la referencia nueva
 }
 
 void pasoCalibracion() {
   for (int i = 0; i < 3; i++) {
     calibSuma[i] += acel[i];
+    calibGiro[i] += giro[i];
     calibMin[i] = min(calibMin[i], acel[i]);
     calibMax[i] = max(calibMax[i], acel[i]);
   }
@@ -452,6 +490,7 @@ void reportarEvento(TipoEvento tipo, float g) {
   huboEvento[tipo] = true;
   ultimoEvento[tipo] = ahora;
   if (g > 16.0) g = 16.0;
+  if (modoCrudo) Serial.printf("E,%lu,%s,%.2f\n", (unsigned long)crudoN, NOMBRE_EVENTO[tipo], g);
   if (!viajeActivo) {
     info("(sin viaje) %s de %.2f g: no se manda; escriba INICIO;ENVIO:1 para probar.", NOMBRE_EVENTO[tipo], g);
     return;
@@ -533,7 +572,7 @@ void muestrearMovimiento() {
     if (millis() - ultimoIntentoMpu >= REINTENTO_MPU_MS) intentarMpu();
     return;
   }
-  if (!leerAcelerometro()) {
+  if (!leerMovimiento()) {
     if (++fallosSeguidos >= 20) {                      // 100 ms sin lecturas: se perdió el sensor
       mpuOk = false;
       gravedadOk = false;
@@ -545,6 +584,12 @@ void muestrearMovimiento() {
     return;
   }
   fallosSeguidos = 0;
+  if (modoCrudo) {
+    // Va antes de la detección, para que una línea E quede después de la muestra que la causó.
+    crudoN++;
+    Serial.printf("D,%lu,%lu,%d,%d,%d,%d,%d,%d\n", (unsigned long)crudoN, (unsigned long)(millis() - crudoDesde),
+                  crudoA[0], crudoA[1], crudoA[2], crudoG[0], crudoG[1], crudoG[2]);
+  }
   if (calibrando) { pasoCalibracion(); return; }
   if (gravedadOk) procesarMuestra();
 }
@@ -619,6 +664,49 @@ void mostrarAyuda() {
   info("OSCURO / CLARO   mide la luz tapada / destapada y ajusta LUZ_ABRE y LUZ_CIERRA");
   info("PRUEBA <FRENADA|HUECO|CURVA>  manda un evento de prueba (necesita viaje)");
   info("FABRICA          vuelve a los umbrales iniciales");
+  info("CRUDO            graba: 200 lineas D por segundo con los 6 ejes (CRUDO otra vez, o CRUDO NO, para parar)");
+}
+
+// ═════════════════════════════ MODO CRUDO ═════════════════════════════
+// Línea M: todo lo que hace falta para interpretar la grabación después, en el PC.
+void enviarMetaCrudo() {
+  char t[640];
+  int n = snprintf(t, sizeof(t),
+    "M,FW=%s,HZ=%lu,ACEL_LSB_G=%.0f,GIRO_LSB_DPS=%.1f,FILTRO_HZ=44,CALIBRADO=%s,EJE=%s,EJE_USADO=%s,"
+    "GRAV=%.4f;%.4f;%.4f,ADELANTE=%.4f;%.4f;%.4f,IZQUIERDA=%.4f;%.4f;%.4f,ARRIBA=%.4f;%.4f;%.4f,"
+    "GIRO_REPOSO=%.3f;%.3f;%.3f",
+    VERSION_FW, (unsigned long)(1000 / MUESTREO_MS), MPU_LSB_POR_G, MPU_LSB_POR_GRADO,
+    gravedadOk ? "SI" : "NO", textoEje(ejeAdelante), textoEje(ejeUsado),
+    gravedad[0], gravedad[1], gravedad[2], adelante[0], adelante[1], adelante[2],
+    izquierda[0], izquierda[1], izquierda[2], arriba[0], arriba[1], arriba[2],
+    giroReposo[0], giroReposo[1], giroReposo[2]);
+  for (int i = 0; i < N_PARAMETROS && n > 0 && n < (int)sizeof(t); i++)
+    n += snprintf(t + n, sizeof(t) - n, ",%s=%.2f", PARAMETROS[i].nombre, *PARAMETROS[i].valor);
+  Serial.println(t);
+}
+
+void cambiarCrudo(String resto) {
+  resto.trim();
+  resto.toUpperCase();
+  bool quiere;
+  if (resto.length() == 0) quiere = !modoCrudo;
+  else if (resto == "SI" || resto == "1" || resto == "ON") quiere = true;
+  else if (resto == "NO" || resto == "0" || resto == "OFF") quiere = false;
+  else { info("Uso: CRUDO  (cambia),  CRUDO SI  o  CRUDO NO"); return; }
+
+  if (quiere == modoCrudo) { info("CRUDO ya estaba %s.", modoCrudo ? "activo" : "apagado"); return; }
+  if (quiere) {
+    if (!mpuOk) info("ATENCION: el GY-521 no responde; no saldran lineas D hasta que vuelva.");
+    modoCal = false;                                   // CAL y CRUDO juntos se estorban en el monitor
+    crudoN = 0;
+    crudoDesde = millis();
+    modoCrudo = true;
+    info("CRUDO activo: D,n,t_ms,ax,ay,az,gx,gy,gz (acel/4096 = g, giro/65.5 = grados/s). CRUDO otra vez para parar.");
+    enviarMetaCrudo();
+  } else {
+    modoCrudo = false;
+    info("CRUDO detenido: %lu muestras en %.1f s.", (unsigned long)crudoN, (millis() - crudoDesde) / 1000.0);
+  }
 }
 
 void mostrarUmbrales() {
@@ -643,6 +731,7 @@ void mostrarEstado() {
   info("Luz: nivel %d -> carga %s (abre > %.0f, cierra < %.0f)", nivelLuz, textoLuz(), uLuzAbre, uLuzCierra);
   if (nivelOscuro >= 0 || nivelClaro >= 0) info("Medidos: oscuro=%d claro=%d", nivelOscuro, nivelClaro);
   info("Encendido hace %lu s", (unsigned long)(millis() / 1000));
+  info("Grabacion CRUDO: %s", modoCrudo ? "ACTIVA" : "apagada");
   info("Umbrales:");
   mostrarUmbrales();
 }
@@ -741,8 +830,9 @@ void atenderSerie(String linea) {
 
   if (cmd == "AYUDA" || cmd == "?") mostrarAyuda();
   else if (cmd == "CAL") {
+    if (modoCrudo) { info("Primero detenga la grabacion con CRUDO NO."); return; }
     modoCal = !modoCal;
-    if (modoCal) info("CAL: cada 100 ms -> ax ay az (crudo) | lon lat vert (sin gravedad) | luz. Escriba CAL para salir.");
+    if (modoCal) info("CAL: cada 100 ms -> ax ay az (crudo) | lon lat vert (sin gravedad) | gx gy gz (grados/s) | luz. Escriba CAL para salir.");
     else info("Fin de CAL.");
   }
   else if (cmd == "VER") mostrarEstado();
@@ -756,6 +846,7 @@ void atenderSerie(String linea) {
   else if (cmd == "CLARO") medirLuzReferencia(false);
   else if (cmd == "PRUEBA") prueba(resto);
   else if (cmd == "FABRICA") valoresDeFabrica();
+  else if (cmd == "CRUDO") cambiarCrudo(resto);
   else info("No entiendo '%s'. Escriba AYUDA.", linea.c_str());
 }
 
@@ -846,6 +937,9 @@ void actualizarLed() {
 
 // ═════════════════════════════ ARRANQUE Y BUCLE ═════════════════════════════
 void setup() {
+  // CRUDO manda ~7-10 KB/s, cerca del límite de 115200 baudios (11,5 KB/s): un búfer grande
+  // absorbe los picos para que escribir en el puerto serie no frene el muestreo.
+  Serial.setTxBufferSize(2048);
   Serial.begin(115200);
   delay(200);
   Serial.println();
@@ -894,8 +988,9 @@ void loop() {
     ultimaCal = ahora;
     if (!mpuOk) Serial.printf("# CAL GY-521 sin respuesta | luz=%4d %s\n", nivelLuz, textoLuz());
     else if (calibrando) Serial.printf("# CAL calibrando gravedad... | luz=%4d %s\n", nivelLuz, textoLuz());
-    else Serial.printf("# CAL ax=%+.2f ay=%+.2f az=%+.2f | lon=%+.2f lat=%+.2f vert=%+.2f | luz=%4d %s\n",
-                       acel[0], acel[1], acel[2], lonF, latF, verF, nivelLuz, textoLuz());
+    else Serial.printf("# CAL ax=%+.2f ay=%+.2f az=%+.2f | lon=%+.2f lat=%+.2f vert=%+.2f | gx=%+6.1f gy=%+6.1f gz=%+6.1f | luz=%4d %s\n",
+                       acel[0], acel[1], acel[2], lonF, latF, verF,
+                       giro[0] - giroReposo[0], giro[1] - giroReposo[1], giro[2] - giroReposo[2], nivelLuz, textoLuz());
   }
 
   // LATIDO cada 10 s: al celular si está conectado, y siempre al monitor serie (modo prueba).
