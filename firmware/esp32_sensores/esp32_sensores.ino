@@ -623,6 +623,7 @@ void mostrarAyuda() {
   info("                 ej.: UMBRAL FRENADA 0.35   UMBRAL HUECO_MS 120   UMBRAL LUZ_ABRE 600");
   info("EJE <X+|X-|Y+|Y-|Z+|Z->  eje del modulo que apunta hacia ADELANTE (se guarda)");
   info("RECAL            vuelve a medir la gravedad (dejelo quieto 2 s)");
+  info("I2C              diagnostico: niveles de SDA/SCL y direcciones que responden");
   info("OSCURO / CLARO   mide la luz tapada / destapada y ajusta LUZ_ABRE y LUZ_CIERRA");
   info("PRUEBA <FRENADA|HUECO|CURVA>  manda un evento de prueba (necesita viaje)");
   info("FABRICA          vuelve a los umbrales iniciales");
@@ -732,6 +733,29 @@ void medirLuzReferencia(bool oscuro) {
   info("Listo: LUZ_ABRE=%.0f y LUZ_CIERRA=%.0f (guardados).", uLuzAbre, uLuzCierra);
 }
 
+// Diagnóstico del bus I2C: nivel de SDA/SCL en reposo (deben estar en 1 por las
+// resistencias del GY-521) y lista de direcciones que contestan (GY-521 = 0x68, o 0x69 si AD0 está en alto).
+void escanearI2c() {
+  Wire.end();
+  pinMode(PIN_SDA, INPUT); pinMode(PIN_SCL, INPUT);
+  delay(2);
+  int sda = digitalRead(PIN_SDA), scl = digitalRead(PIN_SCL);
+  info("I2C en reposo: SDA(GPIO %d)=%d  SCL(GPIO %d)=%d  (los dos deben ser 1)", PIN_SDA, sda, PIN_SCL, scl);
+  if (sda == 0) info("  SDA en 0: algo la tiene a tierra (corto, soldadura o modulo trabado).");
+  if (scl == 0) info("  SCL en 0: algo la tiene a tierra (corto o soldadura).");
+  Wire.begin(PIN_SDA, PIN_SCL, 100000);                // lento, para el diagnostico
+  Wire.setTimeOut(20);
+  int n = 0;
+  for (uint8_t dir = 1; dir < 127; dir++) {
+    Wire.beginTransmission(dir);
+    if (Wire.endTransmission() == 0) { info("  responde la direccion 0x%02X", dir); n++; }
+  }
+  if (n == 0) info("  Nadie responde en el bus I2C.");
+  Wire.end();
+  Wire.begin(PIN_SDA, PIN_SCL, 400000);
+  Wire.setTimeOut(20);
+}
+
 void prueba(String resto) {
   resto.trim();
   resto.toUpperCase();
@@ -765,6 +789,7 @@ void atenderSerie(String linea) {
   else if (cmd == "VER") mostrarEstado();
   else if (cmd == "UMBRAL" || cmd == "UMBRALES") cambiarUmbral(resto);
   else if (cmd == "EJE") cambiarEje(resto);
+  else if (cmd == "I2C") escanearI2c();
   else if (cmd == "RECAL") {
     if (!mpuOk) info("El GY-521 no responde: no se puede calibrar.");
     else { intentosCalib = 0; empezarCalibracion(); }
