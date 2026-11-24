@@ -1,6 +1,6 @@
 /*
  * esp32_sensores.ino — Orbita P3-S3 · ESP32 de sensores de la carga
- * Versión del firmware: 1.0  (protocolo VER:1, el mismo que ya entienden la app y el servidor)
+ * Versión del firmware: 1.0.1  (protocolo VER:1, el mismo que ya entienden la app y el servidor)
  *
  * ─────────────────────────────────────────────────────────────────────────────
  * QUÉ HACE
@@ -9,6 +9,8 @@
  *   reenvía todo al servidor con su GPS y la hora.
  *     - GY-521 (MPU-6050) por I2C ........ frenadas bruscas, huecos y curvas bruscas.
  *     - Fotoresistencia (LDR) en GPIO 34 .. luz dentro de la carga = carga ABIERTA.
+ *       Con UMBRAL LUZ_INV 1 la lógica se invierte (para demos con luz ambiente):
+ *       con luz = CERRADA y al TAPAR la LDR = ABIERTA.
  *
  * PLACA
  *   ESP32 DevKit normal (ESP32-WROOM-32). NO sirve en ESP32-S3/C3 (no tienen
@@ -70,7 +72,7 @@
 
 // ═════════════════════════════ CONFIGURACIÓN FIJA ═════════════════════════════
 const char* NOMBRE_BT  = "ORBITA-SENSORES";   // así aparece en el Bluetooth del celular
-const char* VERSION_FW = "1.0";
+const char* VERSION_FW = "1.0.1";
 
 // Pines
 const int PIN_SDA = 21;
@@ -112,6 +114,7 @@ float uAntirrebote  = 2000;   // 2 s sin repetir el mismo tipo de evento
 float uLuzAbre      = 400;    // nivel (0-4095) por ENCIMA del cual la carga pasa a ABIERTA
 float uLuzCierra    = 250;    // nivel por DEBAJO del cual vuelve a CERRADA (entre ambos: histéresis)
 float uLuzMs        = 300;    // el cambio de luz debe sostenerse 300 ms (evita destellos)
+float uLuzInv       = 0;      // 0 = luz es ABIERTA (camión real); 1 = OSCURO es ABIERTA (demo con luz)
 int8_t ejeAdelante  = 1;      // eje del módulo que apunta hacia ADELANTE: 1=X+ -1=X- 2=Y+ -2=Y- 3=Z+ -3=Z-
 
 struct Parametro {
@@ -134,6 +137,7 @@ Parametro PARAMETROS[] = {
   {"LUZ_ABRE",       "luz_abre",   &uLuzAbre,     400,  1,    4095,  "",   "nivel para ABIERTA"},
   {"LUZ_CIERRA",     "luz_cierra", &uLuzCierra,   250,  0,    4094,  "",   "nivel para CERRADA"},
   {"LUZ_MS",         "luz_ms",     &uLuzMs,       300,  0,    5000,  "ms", "tiempo que debe durar el cambio de luz"},
+  {"LUZ_INV",        "luz_inv",    &uLuzInv,      0,    0,    1,     "",   "1 = invertida: tapar la LDR = ABIERTA"},
 };
 const int N_PARAMETROS = sizeof(PARAMETROS) / sizeof(PARAMETROS[0]);
 
@@ -195,7 +199,8 @@ bool huboEvento[3] = {false, false, false};
 
 // Luz
 int nivelLuz = 0;
-bool luzAbierta = false;
+bool luzClara = false;                   // nivel alto (con histéresis entre LUZ_CIERRA y LUZ_ABRE)
+bool luzAbierta = false;                 // = luzClara, o lo contrario si LUZ_INV = 1
 uint32_t cambioLuzDesde = 0;
 int nivelOscuro = -1, nivelClaro = -1;   // medidos con OSCURO y CLARO
 
@@ -288,6 +293,7 @@ void valoresDeFabrica() {
   for (int i = 0; i < N_PARAMETROS; i++) *PARAMETROS[i].valor = PARAMETROS[i].defecto;
   ejeAdelante = 1;
   calcularEjes();
+  luzAbierta = luzClara != (uLuzInv >= 0.5);
   info("Valores de fabrica restaurados (y borrados de la memoria).");
 }
 
@@ -563,13 +569,14 @@ void enviarLuz(uint8_t canales) {
 
 void revisarLuz() {
   nivelLuz = leerLuz();
-  bool pideCambio = luzAbierta ? (nivelLuz < uLuzCierra) : (nivelLuz > uLuzAbre);
+  bool pideCambio = luzClara ? (nivelLuz < uLuzCierra) : (nivelLuz > uLuzAbre);
   uint32_t ahora = millis();
   if (!pideCambio) { cambioLuzDesde = 0; return; }
   if (cambioLuzDesde == 0) { cambioLuzDesde = ahora; if (uLuzMs > 0) return; }
   if (ahora - cambioLuzDesde < (uint32_t)uLuzMs) return;
   cambioLuzDesde = 0;
-  luzAbierta = !luzAbierta;
+  luzClara = !luzClara;
+  luzAbierta = luzClara != (uLuzInv >= 0.5);
   if (viajeActivo) enviarLuz(AMBOS);
   else info("(sin viaje) carga %s, nivel %d: no se manda (solo va en el LATIDO).", textoLuz(), nivelLuz);
 }
@@ -640,7 +647,10 @@ void mostrarEstado() {
   else if (calibrando) info("GY-521: calibrando la gravedad...");
   else info("GY-521: OK (0x%02X). Gravedad x=%+.3f y=%+.3f z=%+.3f (%.3f g)",
             mpuQuienSoy, gravedad[0], gravedad[1], gravedad[2], gNorma);
-  info("Luz: nivel %d -> carga %s (abre > %.0f, cierra < %.0f)", nivelLuz, textoLuz(), uLuzAbre, uLuzCierra);
+  if (uLuzInv >= 0.5)
+    info("Luz INVERTIDA: nivel %d -> carga %s (abre < %.0f, cierra > %.0f)", nivelLuz, textoLuz(), uLuzCierra, uLuzAbre);
+  else
+    info("Luz: nivel %d -> carga %s (abre > %.0f, cierra < %.0f)", nivelLuz, textoLuz(), uLuzAbre, uLuzCierra);
   if (nivelOscuro >= 0 || nivelClaro >= 0) info("Medidos: oscuro=%d claro=%d", nivelOscuro, nivelClaro);
   info("Encendido hace %lu s", (unsigned long)(millis() / 1000));
   info("Umbrales:");
@@ -666,8 +676,15 @@ void cambiarUmbral(String resto) {
     }
     if (&p.valor[0] == &uLuzAbre && v <= uLuzCierra) { info("LUZ_ABRE debe ser MAYOR que LUZ_CIERRA (%.0f).", uLuzCierra); return; }
     if (&p.valor[0] == &uLuzCierra && v >= uLuzAbre) { info("LUZ_CIERRA debe ser MENOR que LUZ_ABRE (%.0f).", uLuzAbre); return; }
+    if (p.valor == &uLuzInv) v = (v >= 0.5) ? 1 : 0;
     *p.valor = v;
     guardarParametro(p);
+    if (p.valor == &uLuzInv) {
+      bool antes = luzAbierta;
+      luzAbierta = luzClara != (uLuzInv >= 0.5);
+      info("Luz %s: ahora la carga esta %s.", uLuzInv >= 0.5 ? "INVERTIDA (tapar = ABIERTA)" : "normal (luz = ABIERTA)", textoLuz());
+      if (viajeActivo && antes != luzAbierta) enviarLuz(AMBOS);
+    }
     info("%s = %.2f %s (guardado)", p.nombre, v, p.unidad);
     return;
   }
@@ -859,7 +876,8 @@ void setup() {
   analogReadResolution(12);
   analogSetPinAttenuation(PIN_LDR, ADC_11db);
   nivelLuz = leerLuz();
-  luzAbierta = nivelLuz > uLuzAbre;                    // estado inicial, sin mensaje (no hay viaje)
+  luzClara = nivelLuz > uLuzAbre;                      // estado inicial, sin mensaje (no hay viaje)
+  luzAbierta = luzClara != (uLuzInv >= 0.5);
   info("Luz inicial: nivel %d -> carga %s", nivelLuz, textoLuz());
 
   // Acelerómetro. Si no responde, el programa sigue con la luz y lo reintenta.
