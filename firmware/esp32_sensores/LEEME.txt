@@ -138,6 +138,9 @@ QUE HACE
   PRUEBA FRENADA            manda un evento de prueba (tambien HUECO o CURVA);
                             necesita un viaje iniciado
   FABRICA                   vuelve a los umbrales iniciales
+  UMBRAL LUZ_INV 1          invierte la luz (demo con luz ambiente): con luz = CERRADA,
+                            al TAPAR la LDR = ABIERTA. UMBRAL LUZ_INV 0 la deja normal
+                            (camion real). FABRICA tambien la deja en 0. Firmware 1.0.1.
 
   Modo prueba SIN celular: escriba en el monitor los mismos mensajes del celular:
     PING              -> responde PONG
