@@ -873,6 +873,20 @@
   .camion-vivo-icono.seleccionado .camion-vivo { transform: scale(1.15); box-shadow: 0 0 0 3px var(--oscuro), 0 8px 18px -4px rgba(11, 31, 58, 0.85); }
   .camion-vivo-icono.planilla-abierta .camion-vivo { box-shadow: 0 0 0 3px var(--oscuro), 0 0 0 7px rgba(230, 233, 239, 0.95); }
   .camion-vivo-icono.sin-senal .camion-vivo { filter: grayscale(0.75); opacity: 0.7; }
+  /* P3-S3: carga abierta = aro rojo que late + insignia ☀ sobre el camión (el evento queda debajo del ícono) */
+  .camion-vivo-icono.carga-abierta .camion-vivo { animation: latido-carga 1.2s ease-out infinite; }
+  @keyframes latido-carga {
+    0% { box-shadow: 0 0 0 0 rgba(198, 40, 40, 0.75), 0 6px 14px -4px rgba(11, 31, 58, 0.75); }
+    100% { box-shadow: 0 0 0 14px rgba(198, 40, 40, 0), 0 6px 14px -4px rgba(11, 31, 58, 0.75); }
+  }
+  .insignia-carga {
+    position: absolute; top: -9px; right: -11px; min-width: 22px; height: 22px; padding: 0 5px; box-sizing: border-box;
+    border-radius: 11px; background: #C62828; color: #fff; border: 2px solid #fff;
+    display: flex; align-items: center; justify-content: center; gap: 2px;
+    font-family: 'Manrope', system-ui, sans-serif; font-size: 11px; font-weight: 800; white-space: nowrap;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.35);
+  }
+  @media (prefers-reduced-motion: reduce) { .camion-vivo-icono.carga-abierta .camion-vivo { animation: none; box-shadow: 0 0 0 4px #C62828; } }
   .placa-vivo {
     position: absolute; top: 41px; left: 50%; transform: translateX(-50%);
     padding: 1px 6px; border-radius: 6px; border: 2px solid var(--c);
@@ -2083,16 +2097,24 @@
 
   function nombreVehiculo(d) { return d.placa || ('Sin envío · …' + String(d.id_recorrido).slice(-4)); }
 
+  // P3-S3: ¿los sensores de este vehículo dicen que la carga está abierta?
+  function cargaAbiertaDe(d) {
+    var s = d && d.envio && d.envio.sensores;
+    return !!(s && s.carga && s.carga.estado === 'abierta');
+  }
   function iconoVehiculo(v) {
     var d = v.datos;
+    var abierta = cargaAbiertaDe(d);
     return L.divIcon({
-      className: 'camion-vivo-icono' + (v.id === seleccionado ? ' seleccionado' : '') + (d.segundos > SIN_SENAL_S ? ' sin-senal' : ''),
+      className: 'camion-vivo-icono' + (v.id === seleccionado ? ' seleccionado' : '') + (d.segundos > SIN_SENAL_S ? ' sin-senal' : '') +
+                 (abierta ? ' carga-abierta' : ''),
       iconSize: [38, 38], iconAnchor: [19, 19],
       html: '<div class="camion-vivo" style="--c:' + v.color + '">' +
             '<svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path fill="#fff" d="M2 6.5h11.5v9H2zM14.5 9.5h3.8l3.2 3.4v2.6h-7z"/>' +
             '<circle cx="6.5" cy="17" r="2.1" fill="#fff" stroke="' + v.color + '" stroke-width="1.2"/>' +
             '<circle cx="17.5" cy="17" r="2.1" fill="#fff" stroke="' + v.color + '" stroke-width="1.2"/></svg></div>' +
-            '<span class="placa-vivo" style="--c:' + v.color + '">' + escaparHtml(nombreVehiculo(d)) + '</span>'
+            '<span class="placa-vivo" style="--c:' + v.color + '">' + escaparHtml(nombreVehiculo(d)) + '</span>' +
+            (abierta ? '<span class="insignia-carga" title="Carga abierta">☀ Abierta</span>' : '')
     });
   }
 
@@ -2164,7 +2186,7 @@
   }
 
   function pintarIcono(v) {
-    var firma = [v.id === seleccionado, v.datos.segundos > SIN_SENAL_S, nombreVehiculo(v.datos)].join('|');
+    var firma = [v.id === seleccionado, v.datos.segundos > SIN_SENAL_S, nombreVehiculo(v.datos), cargaAbiertaDe(v.datos)].join('|');
     if (firma !== v.firmaIcono) {
       v.firmaIcono = firma;
       v.marcador.setIcon(iconoVehiculo(v));
