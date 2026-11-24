@@ -2182,7 +2182,7 @@
     siguiendo = !!seguir;
     Object.keys(vehiculos).forEach(function (k) { pintarIcono(vehiculos[k]); });
     mostrarSeleccionado();
-    if (seguir) { mapa.setView(marcador.getLatLng(), Math.max(mapa.getZoom(), 15)); }
+    if (seguir) { centrarEnLibre(marcador.getLatLng(), Math.max(mapa.getZoom(), 15)); }
     pintarListaVivo();
   }
 
@@ -2220,6 +2220,19 @@
       }
     });
     return { paddingTopLeft: [50, arriba], paddingBottomRight: [derecha, 60], maxZoom: 15 };
+  }
+
+  // Centra el mapa en un punto, pero dentro de la zona que queda libre (sin la ventana de datos ni
+  // las tarjetas): en el celular el camión queda debajo de la pila; en el PC, a la izquierda de ella.
+  function centrarEnLibre(latlng, zoom) {
+    var m = margenesVivo(), t = mapa.getSize();
+    var izq = m.paddingTopLeft[0], arriba = m.paddingTopLeft[1], der = m.paddingBottomRight[0], abajo = m.paddingBottomRight[1];
+    if (t.x - izq - der < 80) { izq = der = 0; }                 // zona libre demasiado angosta: se centra normal
+    if (t.y - arriba - abajo < 80) { arriba = Math.min(arriba, t.y - 140); abajo = 60; }
+    var libre = L.point((izq + t.x - der) / 2, (arriba + t.y - abajo) / 2);
+    var corrimiento = libre.subtract(t.divideBy(2));            // cuánto se aleja el centro libre del centro del mapa
+    var centro = mapa.unproject(mapa.project(latlng, zoom).subtract(corrimiento), zoom);
+    mapa.setView(centro, zoom);
   }
 
   function textoHace(s) {
@@ -2394,7 +2407,7 @@
           yaEncuadrado = true;
           encuadrarTodos();
         } else if (siguiendo && marcador) {
-          mapa.setView(marcador.getLatLng(), mapa.getZoom());
+          centrarEnLibre(marcador.getLatLng(), mapa.getZoom());
         }
       })
       .catch(function (e) { console.error(e); });
@@ -2408,7 +2421,7 @@
     if (marcador) {
       siguiendo = true;
       var zoomActual = mapa.getZoom();
-      mapa.setView(marcador.getLatLng(), zoomActual < 13 ? 15 : zoomActual);
+      centrarEnLibre(marcador.getLatLng(), zoomActual < 13 ? 15 : zoomActual);
     } else {
       encuadrarTodos();
     }
@@ -4717,7 +4730,11 @@
     var boton = ev.target.closest('.viaje-cabecera');
     if (!boton) { return; }
     var id = boton.getAttribute('data-id');
-    if (id === String(seleccionado)) { tarjetaViajePlegada = !tarjetaViajePlegada; pintarTarjetaViaje(); }
+    if (id === String(seleccionado)) {
+      tarjetaViajePlegada = !tarjetaViajePlegada;
+      pintarTarjetaViaje();
+      if (siguiendo && marcador) { centrarEnLibre(marcador.getLatLng(), mapa.getZoom()); }   // la tarjeta cambió de alto
+    }
     else { tarjetaViajePlegada = false; seleccionar(id, true); }
   });
   // El envío dentro de la planilla flotante (al tocar el camión).
